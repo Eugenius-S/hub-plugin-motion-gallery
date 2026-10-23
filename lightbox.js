@@ -47,12 +47,16 @@ export function openLightbox({ el, tr, base, items, index, onClose, onDelete = n
   const promptHead = el("summary", "mg-lb-sum", tr("prompt"));
   const text = el("div", "mg-lb-text");
   prompt.append(promptHead, text);
-  const link = el("a", "mg-lb-link");
+  // the row under the caption: "To the source" (only when the example has a link) and "Delete" (only when the process allows it)
+  const actions = el("div", "mg-lb-actions");
+  const link = el("a", "mg-lb-act mg-lb-link", tr("to_source"));
   link.target = "_blank";
   link.rel = "noopener noreferrer";
-  cap.append(count, title, meta, prompt, link);
-  const del = onDelete ? button("mg-lb-btn mg-lb-del", "trash", tr("delete")) : null;
-  box.append(stage, cap, prev, next, ...(del ? [del] : []), x);
+  const del = onDelete ? el("button", "mg-lb-act mg-lb-del", tr("delete")) : null;
+  if (del) del.type = "button";
+  actions.append(link, ...(del ? [del] : []));
+  cap.append(count, title, meta, prompt, actions);
+  box.append(stage, cap, prev, next, x);
   let video = null;
 
   function release() {
@@ -99,7 +103,7 @@ export function openLightbox({ el, tr, base, items, index, onClose, onDelete = n
     link.hidden = !links.length;
     if (links.length) {
       link.href = links[0].url;
-      link.textContent = [tr("open_post"), links[0].source].filter(Boolean).join(" · ");
+      link.title = [tr("open_post"), links[0].source].filter(Boolean).join(" · ");
     }
     prev.disabled = at <= 0;
     next.disabled = at >= list.length - 1;
@@ -126,7 +130,7 @@ export function openLightbox({ el, tr, base, items, index, onClose, onDelete = n
     }
     if (e.key === " " && !e.target.closest?.("button, video, a, summary")) { e.preventDefault(); if (video) (video.paused ? video.play().catch(() => {}) : video.pause()); return; }
     if (e.key === "Tab") {   // the focus stays inside: the buttons, the video controls, the link
-      const ring = [x, del, prev, next, video, promptHead, link].filter((n) => n && !n.hidden && !n.disabled);
+      const ring = [x, prev, next, video, promptHead, link, del].filter((n) => n && !n.hidden && !n.disabled);
       if (!ring.length) return e.preventDefault();
       const i = ring.indexOf(document.activeElement);
       e.preventDefault();

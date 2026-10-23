@@ -85,6 +85,8 @@ export function targets(sessions, last) {
 // ---- tags: a click on a card puts "(Name)" at the cursor of the chat input; the prompt, the video and the preview of every
 // tag still in the text are added under the message when it is sent (see main.js) and never stay in the input.
 export const REFS_MARK = "Refs from Motion Gallery";
+// said before the prompt of every example: it was written for another task, so the model takes from it what this task needs
+export const REF_NOTE = "Note: this reference was made for another task. Take the part we need and carry it over; do not copy it whole.";
 
 // the tag of an example in the input: "(Title)"; a second example with the same title becomes "(Title 2)", "(Title 3)"…
 // `taken` is Map tag -> slug of the tags this input already holds; the same example always gets its own tag back
@@ -117,7 +119,7 @@ export function usedRefs(value, tags) {
 // the text under the message: for every tag - its prompt and the links to the video and the preview
 export function refsBlock(entries) {
   return REFS_MARK + " (the tags in the message above stand for these examples):\n\n" + entries.map((r) =>
-    [r.tag, r.prompt && "Prompt: " + r.prompt, r.video && "Video: " + r.video, r.preview && "Preview: " + r.preview, r.source && "Source: " + r.source].filter(Boolean).join("\n")).join("\n\n");
+    [r.tag, r.prompt && REF_NOTE, r.prompt && "Prompt: " + r.prompt, r.video && "Video: " + r.video, r.preview && "Preview: " + r.preview, r.source && "Source: " + r.source].filter(Boolean).join("\n")).join("\n\n");
 }
 
 // the message with its refs (an old block is replaced, so doing it twice is the same as once)

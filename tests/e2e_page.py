@@ -437,11 +437,11 @@ class Lightbox(Sandbox):
             (None, {"until": "document.querySelectorAll('.mg-panel .mg-card').length >= 8", "ms": 10000}),
             (None, {"sleep": 800}),
             ("rest", {"eval": "getComputedStyle(document.querySelector('.mg-panel .mg-card .mg-zoom')).opacity"}),
-            # a held mouse over the card keeps :hover: the magnifier shows in the top left corner
+            # a held mouse over the card keeps :hover: the magnifier shows in the top right corner
             (None, {"drag": ".mg-panel .mg-card", "to": ".mg-panel .mg-card", "keep": True}),
             (None, {"sleep": 500}),
             ("hover", {"eval": "(() => { const z = document.querySelector('.mg-panel .mg-card .mg-zoom'), m = z.closest('.mg-media').getBoundingClientRect(), r = z.getBoundingClientRect();"
-                               " return [getComputedStyle(z).opacity, Math.round(r.left - m.left), Math.round(r.top - m.top), document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === z || z.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))]; })()"}),
+                               " return [getComputedStyle(z).opacity, Math.round(m.right - r.right), Math.round(r.top - m.top), document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === z || z.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))]; })()"}),
             (None, self.shot("card-magnifier.png")),
             (None, {"eval": "document.querySelector('.mg-panel .mg-card .mg-zoom').click(); 1"}),
             ("open", {"until": "!!document.querySelector('.mg-lb video')", "ms": 4000}),
@@ -470,7 +470,7 @@ class Lightbox(Sandbox):
         ])
         self.assertEqual(r["rest"]["eval"], "0", "the magnifier shows only on hover")
         op, left, top, on_top = r["hover"]["eval"]
-        self.assertEqual((op, left, top), ("1", 8, 8), "the magnifier is in the top left corner of the card")
+        self.assertEqual((op, left, top), ("1", 8, 8), "the magnifier is in the top right corner of the card")
         self.assertTrue(on_top, "and the playing preview does not cover it")
         self.assertTrue(r["open"]["until"], r["open"])
         controls, muted, has_src, chips, panel, count, role, prev_off, next_off = r["state"]["eval"]
@@ -522,9 +522,106 @@ class Lightbox(Sandbox):
         self.assertEqual(r["jserr"]["eval"], [], "the page threw nothing")
 
 
+@unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
+class Removal(Sandbox):
+    """Delete lives under the caption in the lightbox, with a few seconds of undo; the picked mark and the magnifier share the corner."""
+    def ext_config(self):
+        import shutil
+        import tempfile
+        self.copy = tempfile.mkdtemp(prefix="mg-copy-")   # a copy: the real stub is never deleted from
+        shutil.copytree(STUB, self.copy, dirs_exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.copy, True)
+        return {"gallery_dir": self.copy}
+
+    def slugs(self):
+        with open(os.path.join(self.copy, "gallery.json"), encoding="utf-8") as f:
+            raw = json.load(f)
+        rows = raw.get("items") if isinstance(raw, dict) else raw
+        return [r.get("slug") or r.get("id") for r in rows]
+
+    OPEN = [
+        (None, {"go": "URL#/s/b", "init": COLLECT}),
+        (None, {"until": "!!document.querySelector('form.composer .mg-open')", "ms": 10000}),
+        (None, {"eval": "document.querySelector('form.composer .mg-open').click(); 1"}),
+        (None, {"until": "document.querySelectorAll('.mg-panel .mg-card').length >= 8", "ms": 10000}),
+        (None, {"sleep": 600}),
+    ]
+
+    def open_steps(self):
+        return [(l, {**s, "go": s["go"].replace("URL", self.url)} if "go" in s else s) for l, s in self.OPEN]
+
+    def test_delete_button_under_the_caption_hides_the_card_and_waits_for_the_undo(self):
+        before = len(self.slugs())
+        vis = "[...document.querySelectorAll('.mg-panel .mg-card')].filter(c => !c.hidden).length"
+        r = self.run_steps(self.open_steps() + [
+            ("n0", {"eval": vis}),
+            (None, {"eval": "document.querySelector('.mg-panel .mg-card .mg-zoom').click(); 1"}),
+            (None, {"until": "!!document.querySelector('.mg-lb video')", "ms": 4000}),
+            ("acts", {"eval": "[...document.querySelectorAll('.mg-lb-actions .mg-lb-act')].filter(b => !b.hidden).map(b => b.className)"}),
+            ("nocross", {"eval": "[!!document.querySelector('.mg-card .mg-del'), !!document.querySelector('.mg-lb-btn.mg-lb-del')]"}),
+            (None, self.shot("lightbox-actions.png", width=1300, height=900)),
+            (None, {"eval": "document.querySelector('.mg-lb-del').click(); 1"}),
+            ("plate", {"until": "!!document.querySelector('.mg-undo')", "ms": 3000}),
+            ("n1", {"eval": vis}),
+            ("lb", {"eval": "document.querySelector('.mg-lb-count').textContent"}),
+            (None, self.shot("undo-plate.png", width=1300, height=900)),
+            (None, {"eval": "document.querySelector('.mg-undo-btn').click(); 1"}),
+            ("n2", {"eval": "[" + vis + ", !!document.querySelector('.mg-undo')]"}),
+            (None, {"sleep": 7000}),
+            ("n3", {"eval": vis}),
+            ("jserr", {"eval": "window.__mg"}),
+        ])
+        acts = r["acts"]["eval"]
+        self.assertEqual(len(acts), 2, "the link to the source and delete, under the caption: %s" % acts)
+        self.assertIn("mg-lb-del", acts[-1])
+        self.assertEqual(r["nocross"]["eval"], [False, False], "no cross on the card, no round button at the top")
+        self.assertTrue(r["plate"]["until"], "the undo plate shows")
+        self.assertEqual(r["n1"]["eval"], r["n0"]["eval"] - 1, "the card left the grid at once")
+        self.assertRegex(r["lb"]["eval"], r"^1 (of|из) %d$" % (r["n0"]["eval"] - 1), "the lightbox went on to the next example")
+        self.assertEqual(r["n2"]["eval"], [r["n0"]["eval"], False], "undo brings the card back and takes the plate away")
+        self.assertEqual(r["n3"]["eval"], r["n0"]["eval"], "and nothing was deleted when the time passed")
+        self.assertEqual(len(self.slugs()), before)
+        self.assertEqual(r["jserr"]["eval"], [], "the page threw nothing")
+
+    def test_without_the_undo_the_example_is_taken_off_the_disk(self):
+        slugs = self.slugs()
+        r = self.run_steps(self.open_steps() + [
+            ("slug", {"eval": "document.querySelector('.mg-panel .mg-card').dataset.slug"}),
+            (None, {"eval": "document.querySelector('.mg-panel .mg-card .mg-zoom').click(); 1"}),
+            (None, {"until": "!!document.querySelector('.mg-lb video')", "ms": 4000}),
+            (None, {"eval": "document.querySelector('.mg-lb-del').click(); 1"}),
+            (None, {"key": "Escape"}),
+            (None, {"sleep": 8000}),
+            ("after", {"eval": "[!!document.querySelector('.mg-undo'), document.querySelectorAll('.mg-panel .mg-card').length]"}),
+            ("jserr", {"eval": "window.__mg"}),
+        ])
+        gone = r["slug"]["eval"]
+        self.assertIn(gone, slugs)
+        self.assertEqual(self.slugs(), [s for s in slugs if s != gone], "gallery.json lost exactly that example")
+        self.assertEqual(r["after"]["eval"], [False, len(slugs) - 1], "the plate is gone and the grid is one card shorter: %s" % r["after"])
+        self.assertEqual(r["jserr"]["eval"], [], "the page threw nothing")
+
+    def test_the_picked_mark_and_the_magnifier_do_not_overlap(self):
+        r = self.run_steps(self.open_steps() + [
+            (None, {"eval": "document.querySelectorAll('.mg-panel .mg-card')[0].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })); 1"}),
+            (None, {"until": "[...document.querySelectorAll('.mg-panel .mg-added')].some(b => !b.hidden)", "ms": 8000}),
+            (None, {"drag": ".mg-panel .mg-card", "to": ".mg-panel .mg-card", "keep": True}),
+            (None, {"sleep": 500}),
+            ("rects", {"eval": "(() => { const c = document.querySelector('.mg-panel .mg-card'), m = c.querySelector('.mg-media').getBoundingClientRect(), a = c.querySelector('.mg-added').getBoundingClientRect(), z = c.querySelector('.mg-zoom').getBoundingClientRect();"
+                               " return [Math.round(m.right - a.right), Math.round(a.top - m.top), Math.round(a.left - z.right), Math.round(z.top - m.top), getComputedStyle(c.querySelector('.mg-zoom')).opacity]; })()"}),
+            (None, self.shot("card-picked.png", width=1300, height=900)),
+            ("jserr", {"eval": "window.__mg"}),
+        ])
+        right, top, gap, ztop, op = r["rects"]["eval"]
+        self.assertEqual((right, top, ztop), (8, 8, 8), "the check mark is in the top right corner, the magnifier at the same height")
+        self.assertGreaterEqual(gap, 4, "the magnifier sits left of the check mark with a gap: %s" % r["rects"])
+        self.assertEqual(op, "1")
+        self.assertEqual(r["jserr"]["eval"], [], "the page threw nothing")
+
+
 if __name__ == "__main__":
     # Page inherits PageInChrome: only our own tests, not the whole hub e2e suite
-    own = [f"{c.__name__}.{n}" for c in (Page, Ghost, Real, Icon, Lightbox) for n in vars(c) if n.startswith("test_")]
+    own = [f"{c.__name__}.{n}" for c in (Page, Ghost, Real, Icon, Lightbox, Removal) for n in vars(c) if n.startswith("test_")]
     names = [a for a in sys.argv[1:] if not a.startswith("-")]
     flags = [a for a in sys.argv[1:] if a.startswith("-")]
     unittest.main(argv=[sys.argv[0], *flags, *(names or own)])

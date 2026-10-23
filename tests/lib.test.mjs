@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { categories, chatText, excerpt, filterItems, fmtDuration, lightVideo, linksOf, matches, mediaUrl, metaLine, processPort, refsBlock, sessionOf, sourceList, stepIndex, stripRefs, tagFor, tagList, targets, insertAt, usedRefs, withRefs } from "../lib.js";
+import { REF_NOTE, categories, chatText, excerpt, filterItems, fmtDuration, lightVideo, linksOf, matches, mediaUrl, metaLine, processPort, refsBlock, sessionOf, sourceList, stepIndex, stripRefs, tagFor, tagList, targets, insertAt, usedRefs, withRefs } from "../lib.js";
 
 const ITEMS = [
   { slug: "a-1", category: "Product", author: "Anna", tags: ["loop", "3d"], prompt: "A glossy bottle spins on a pedestal" },
@@ -157,4 +157,13 @@ test("refs: only tags still in the text go with the message, once, and doing it 
   assert.equal(stripRefs(sent), text);
   assert.equal(withRefs(text, []), text);
   assert.ok(refsBlock(used).startsWith("Refs from Motion Gallery"));
+});
+
+test("refs: every prompt comes after the note that it was made for another task; an example without a prompt gets no note", () => {
+  const block = refsBlock([{ tag: "(A)", slug: "a", prompt: "pa" }, { tag: "(B)", slug: "b", prompt: "" }, { tag: "(C)", slug: "c", prompt: "pc" }]);
+  assert.equal(block.split(REF_NOTE).length - 1, 2);
+  assert.ok(block.includes(REF_NOTE + "\nPrompt: pa"));
+  assert.ok(block.includes(REF_NOTE + "\nPrompt: pc"));
+  assert.ok(/\(B\)(\n\n|$)/.test(block));
+  assert.match(REF_NOTE, /another task/);
 });

@@ -7,6 +7,8 @@ set - an empty gallery with a hint. Relative paths of gallery.json that are not 
   /gallery.json   the normalised list (see load())
   /f/<path>       a file of the gallery folder, with Range for video; never outside the folder
   /poster/<slug>  the poster as bytes: a file, or a remote URL fetched here (the page can not read a foreign image)
+  POST /delete    {slug}: takes the example out of gallery.json and deletes its files (folder, or WebDAV behind media_base);
+                  settings allow_delete (default on), dav_login, dav_folder; the page asks only after its undo time ran out
 """
 import json
 import mimetypes
@@ -22,6 +24,8 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote, unquote, urlparse
+
+from remove import take_out
 
 WEB_PORT = int(os.environ.get("HUB_WEB_PORT") or 8787)
 PORT = int(os.environ.get("MOTION_GALLERY_PORT") or WEB_PORT + 12)
@@ -160,6 +164,10 @@ def links_of(r):
     return out[:8]
 
 
+def slug_of(r):
+    return re.sub(r"[^\w.-]", "-", text(r.get("slug") or r.get("id"), 120)).strip("-")
+
+
 def normalise(root, raw, base=""):
     """gallery.json (a list or {items: [...]}) -> the entries the page draws. Entries without a slug or without any picture are dropped."""
     rows = raw.get("items") if isinstance(raw, dict) else raw
@@ -167,7 +175,7 @@ def normalise(root, raw, base=""):
     for r in rows if isinstance(rows, list) else []:
         if not isinstance(r, dict):
             continue
-        slug = re.sub(r"[^\w.-]", "-", text(r.get("slug") or r.get("id"), 120)).strip("-")
+        slug = slug_of(r)
         if not slug or slug in seen:
             continue
         video = media(root, base, slug, r.get("video"), "videos", (".mp4", ".webm", ".mov"))
@@ -241,6 +249,124 @@ def load():
             _cache.update(sig=None, data=None)
             return {"configured": True, "ready": False, "items": []}
     return _cache["data"]
+
+
+# ---- taking an example out (the lightbox "Delete"; the page waits a few seconds with an undo before it asks for this)
+_delete_lock = threading.Lock()
+
+
+def make_dav():
+    """The storage client for a gallery that lives behind media_base (WebDAV login of the owner), or None: no login."""
+    import dav
+    login = dav.read_login(setting("dav_login", "MOTION_GALLERY_DAV_LOGIN"))
+    return dav.Dav(login, setting("dav_folder", "MOTION_GALLERY_DAV_FOLDER") or dav.DEFAULT_FOLDER) if login else None
+
+
+def deleting_allowed():
+    return setting("allow_delete", "MOTION_GALLERY_DELETE").lower() not in ("false", "0", "off", "no")
+
+
+def can_delete():
+    """True when the gallery can be written to: a folder with a writable gallery.json, or a base with a WebDAV login."""
+    if not deleting_allowed():
+        return False
+    root = gallery_dir()
+    if root:
+        return os.access(os.path.join(root, FILE), os.W_OK)
+    if setting("gallery_dir", "MOTION_GALLERY_DIR") or not media_base():
+        return False
+    try:
+        return make_dav() is not None
+    except Exception:
+        return False
+
+
+class Refused(Exception):
+    def __init__(self, code, what):
+        super().__init__(what)
+        self.code, self.what = code, what
+
+
+def remove_from_folder(root, slug):
+    path = os.path.join(root, FILE)
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        raise Refused(502, "gallery.json is not readable")
+    got = take_out(raw, slug, slug_of)
+    if not got:
+        raise Refused(404, "not in the gallery")
+    new_raw, files = got
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(new_raw, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+    left = 0
+    for rel in files:
+        real = inside(root, rel)
+        if not real:
+            continue
+        try:
+            os.remove(real)
+        except OSError:
+            left += 1
+    return {"ok": True, "files": len(files), "left": left}
+
+
+def remove_from_storage(base, slug):
+    import dav
+    d = make_dav()
+    if not d:
+        raise Refused(403, "no storage login")
+    for attempt in range(3):
+        try:
+            body, etag = d.get(FILE)
+            if not etag:
+                raise Refused(502, "the storage gave no version of gallery.json")
+            raw = json.loads(body.decode("utf-8-sig"))
+        except ValueError:
+            raise Refused(502, "gallery.json is not JSON")
+        got = take_out(raw, slug, slug_of)
+        if not got:
+            raise Refused(404, "not in the gallery")
+        new_raw, files = got
+        try:
+            d.put(FILE, json.dumps(new_raw, ensure_ascii=False, indent=2).encode("utf-8"), etag)
+            break
+        except dav.DavError as e:
+            if e.code == 412 and attempt < 2:
+                continue   # the file changed meanwhile (a new example came in): read it again, take the entry out of that one
+            raise Refused(409 if e.code == 412 else 502, e.what)
+    left = 0
+    for rel in files:
+        try:
+            d.delete(rel)
+        except dav.DavError as e:
+            left += 1
+            log(f"delete {rel}: {e.what}")
+    _web.update(url=base, time=time.time(), raw=new_raw, failed=0)
+    return {"ok": True, "files": len(files), "left": left}
+
+
+def remove_entry(slug):
+    """-> the answer {ok, files, left}; Refused(code, what) when it can not be done."""
+    if not deleting_allowed():
+        raise Refused(403, "deleting is off")
+    slug = str(slug or "")
+    if not slug:
+        raise Refused(400, "no slug")
+    with _delete_lock:
+        root, base = gallery_dir(), media_base()
+        if root:
+            out = remove_from_folder(root, slug)
+        elif base and not setting("gallery_dir", "MOTION_GALLERY_DIR"):
+            out = remove_from_storage(base, slug)
+        else:
+            raise Refused(403, "nothing to delete from")
+        _cache.update(sig=None, data=None)
+        log(f"deleted {slug}: {out['files']} files, {out['left']} left")
+        return out
 
 
 _remote = {}   # url -> (time, bytes, mime)
@@ -358,7 +484,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         if self.guard() or not self.cors():
             return self.say(403, {"error": "origin"})
-        self.head(204, "text/plain", 0, {**self.cors(), "Access-Control-Allow-Methods": "GET", "Access-Control-Max-Age": "600"})
+        self.head(204, "text/plain", 0, {**self.cors(), "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "600"})
 
     def do_GET(self):
         bad = self.guard()
@@ -369,7 +495,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/ping":
             return self.say(200, {"ok": True}, extra)
         if url.path == "/gallery.json":
-            return self.say(200, load(), extra) if extra else self.say(403, {"error": "origin"})
+            return self.say(200, {**load(), "can_delete": can_delete()}, extra) if extra else self.say(403, {"error": "origin"})
         if url.path.startswith("/poster/"):
             return self.poster(unquote(url.path[len("/poster/"):]), extra)
         if url.path.startswith("/f/"):
@@ -377,6 +503,29 @@ class Handler(BaseHTTPRequestHandler):
         return self.say(404, {"error": "no page"})
 
     do_HEAD = do_GET
+
+    def do_POST(self):
+        bad = self.guard()
+        extra = self.cors()
+        if bad or not extra:   # only the hub page may ask for a change
+            return self.say(403, {"error": bad or "origin"})
+        if urlparse(self.path).path != "/delete":
+            return self.say(404, {"error": "no page"}, extra)
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(size).decode("utf-8")) if 0 < size <= 4096 else None
+            slug = body.get("slug") if isinstance(body, dict) else None
+        except (ValueError, OSError):
+            slug = None
+        if not isinstance(slug, str) or not slug:
+            return self.say(400, {"error": "slug is needed"}, extra)
+        try:
+            return self.say(200, remove_entry(slug), extra)
+        except Refused as e:
+            return self.say(e.code, {"error": e.what}, extra)
+        except Exception as e:   # a storage that is down must not take the process with it
+            log(f"delete {slug}: {type(e).__name__}")
+            return self.say(502, {"error": "storage failed"}, extra)
 
     def poster(self, slug, extra):
         item = next((i for i in load()["items"] if i["slug"] == slug), None)

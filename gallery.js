@@ -8,7 +8,7 @@ import { LOADING_PX, isDark, runner, runnerDisc } from "./loader.js";
 const HOVER_MS = 140;   // the mouse must stay this long: a sweep over the grid starts no video
 
 // props: el (hub.el), tr (translator), base() -> process address or "" (not reachable from here), onPick(item),
-//        onDelete(item)? - the cross in the corner of a card (shown only when the process allows deleting): the caller hides the
+//        onDelete(item)? - the "Delete" button of the lightbox (shown only when the process allows deleting): the caller hides the
 //        card with hide() for the time of the undo and takes the example off the disk when that time is over,
 //        session? { get(), set(name), list() } - "Insert into" choice (the view; the overlay inserts into its own chat)
 export function createGallery({ el, tr, base, onPick, onDelete = null, session = null }) {
@@ -100,16 +100,6 @@ export function createGallery({ el, tr, base, onPick, onDelete = null, session =
     zoom.addEventListener("click", (e) => { e.stopPropagation(); expand(item); });   // not a pick: nothing goes into the chat
     zoom.addEventListener("keydown", (e) => e.stopPropagation());
     media.append(zoom);
-    if (S.canDelete && onDelete) {
-      const del = el("button", "mg-del");
-      del.type = "button";
-      del.append(ico("close"));
-      del.title = tr("delete");
-      del.setAttribute("aria-label", tr("delete"));
-      del.addEventListener("click", (e) => { e.stopPropagation(); onDelete(item); });   // no dialog: the undo plate is the safety net
-      del.addEventListener("keydown", (e) => e.stopPropagation());
-      media.append(del);
-    }
     const done = el("span", "mg-added");
     done.append(ico("check"));
     done.hidden = !S.added.has(item.slug);

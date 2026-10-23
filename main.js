@@ -27,7 +27,11 @@ const STR = {
     offline: "The plugin process is not responding. Restart the plugin: hub restart ext:<account>:motion-gallery",
     local_only: "Motion Gallery works only on this computer: open the hub via localhost.",
     prompt: "Prompt",
-    delete: "Delete from the gallery",
+    to_source: "To the source",
+    delete: "Delete",
+    deleted: "Deleted: {name}",
+    undo: "Undo",
+    delete_failed: "The example was not deleted: the gallery refused or did not answer. It is back in the list.",
     no_chat: "The chat input did not open: choose a chat and try again.",
     close: "Close",
     expand: "View full screen",
@@ -54,7 +58,11 @@ const STR = {
     offline: "Процесс плагина не отвечает. Перезапустите плагин: hub restart ext:<аккаунт>:motion-gallery",
     local_only: "Галерея движения работает только на этом компьютере: откройте хаб через localhost.",
     prompt: "Промт",
-    delete: "Удалить из галереи",
+    to_source: "К источнику",
+    delete: "Удалить",
+    deleted: "Удалено: {name}",
+    undo: "Отменить",
+    delete_failed: "Пример не удалён: галерея отказала или не ответила. Он вернулся в список.",
     no_chat: "Поле ввода чата не открылось: выберите чат и повторите.",
     close: "Закрыть",
     expand: "Открыть на весь экран",
@@ -106,6 +114,43 @@ async function putIn(formPromise, item) {
   return insertTag(form, tag);
 }
 
+// Delete (the button in the lightbox): the card leaves the grid at once and a plate "Deleted · Undo" stays for a few seconds;
+// only when they pass does the process take the example off the disk. Undo, or leaving the page, deletes nothing
+const UNDO_MS = 6000;
+const undo = new Map();   // slug -> { plate, timer }
+const hideEverywhere = (slug, on) => { main?.hide(slug, on); over?.g.hide(slug, on); };
+
+async function removeOnServer(slug) {
+  try {
+    const r = await fetch(base() + "/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug }) });
+    return r.ok;
+  } catch { return false; }
+}
+
+function onDelete(item) {
+  if (undo.has(item.slug)) return;
+  hideEverywhere(item.slug, true);
+  let box = document.querySelector(".mg-undos");
+  if (!box) { box = hub.el("div", "mg-undos"); document.body.append(box); }
+  const plate = hub.el("div", "mg-undo");
+  plate.setAttribute("role", "status");
+  const back = hub.el("button", "mg-undo-btn", tr("undo"));
+  back.type = "button";
+  plate.append(hub.el("span", "mg-undo-name", tr("deleted", { name: item.title || item.slug })), back);
+  box.append(plate);
+  const rec = { plate, timer: 0 };
+  undo.set(item.slug, rec);
+  const finish = () => { clearTimeout(rec.timer); plate.remove(); undo.delete(item.slug); };
+  back.addEventListener("click", () => { finish(); hideEverywhere(item.slug, false); });
+  rec.timer = setTimeout(async () => {
+    const ok = await removeOnServer(item.slug);
+    await Promise.all([main?.load(), over?.g.load()]);   // the list as the process has it now
+    finish();
+    hideEverywhere(item.slug, false);
+    if (!ok) toast(tr("delete_failed"));
+  }, UNDO_MS);
+}
+
 // inserts go one after another: quick clicks on several cards keep their order (the poster of each loads on its own time)
 let queue = Promise.resolve();
 const enqueue = (fn) => (queue = queue.then(fn, fn));
@@ -129,7 +174,7 @@ const chosen = () => {
 function render(root) {
   if (!main) {
     main = createGallery({
-      el: hub.el, tr, base, onPick: pickFromView,
+      el: hub.el, tr, base, onPick: pickFromView, onDelete,
       session: { get: chosen, set: (n) => { picked = n; }, list: () => targets(sessions(), lastChat()) },
     });
     root.replaceChildren(main.node);
@@ -155,7 +200,7 @@ function openOver(form) {
   x.setAttribute("aria-label", tr("close"));
   const input = () => form.querySelector("textarea");
   const g = createGallery({
-    el: hub.el, tr, base,
+    el: hub.el, tr, base, onDelete,
     onPick: (item, ev) => {
       enqueue(() => putIn(Promise.resolve(form), item)).then((ok) => { if (ok) g.mark(item.slug); });
       if (ev?.detail) input()?.focus({ preventScroll: true });   // a mouse pick: typing goes on right away

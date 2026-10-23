@@ -31,19 +31,20 @@
 .mg-dur { position: absolute; right: 8px; bottom: 8px; padding: 1px 7px; border-radius: 999px; background: rgba(0, 0, 0, .62); color: #fff; font-size: 11px; font-variant-numeric: tabular-nums; pointer-events: none; }
 /* the magnifier in the top left corner: the example full screen (a click on the card itself still puts its tag into the chat);
    the cross in the top right corner takes the example out of the gallery (only when deleting is on) */
-.mg-zoom, .mg-del { position: absolute; top: 8px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; display: grid; place-items: center; opacity: 0; transition: opacity .15s, background .15s; }
-.mg-zoom { left: 8px; cursor: zoom-in; }
-.mg-del { right: 8px; cursor: pointer; }
-.mg-card:hover .mg-zoom, .mg-card:focus-within .mg-zoom, .mg-zoom:focus-visible, .mg-card:hover .mg-del, .mg-card:focus-within .mg-del, .mg-del:focus-visible { opacity: 1; }
-.mg-zoom:hover, .mg-del:hover { background: rgba(0, 0, 0, .8); }
-.mg-zoom:focus-visible, .mg-del:focus-visible, .mg-lb-btn:focus-visible, .mg-lb-link:focus-visible, .mg-lb-video:focus-visible, .mg-lb:focus-visible, .mg-lb-sum:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.mg-zoom .mg-ico, .mg-del .mg-ico { width: 18px; height: 18px; }
-@media (hover: none) { .mg-zoom, .mg-del { opacity: 1; } }
+.mg-zoom { position: absolute; top: 8px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; display: grid; place-items: center; opacity: 0; transition: opacity .15s, background .15s; }
+/* both corner marks sit in the top right: the magnifier on its own, and left of the check mark once the example is picked */
+.mg-zoom { right: 8px; cursor: zoom-in; }
+.mg-media:has(.mg-added:not([hidden])) .mg-zoom { right: 44px; }
+.mg-card:hover .mg-zoom, .mg-card:focus-within .mg-zoom, .mg-zoom:focus-visible { opacity: 1; }
+.mg-zoom:hover { background: rgba(0, 0, 0, .8); }
+.mg-zoom:focus-visible, .mg-lb-btn:focus-visible, .mg-lb-act:focus-visible, .mg-lb-link:focus-visible, .mg-lb-video:focus-visible, .mg-lb:focus-visible, .mg-lb-sum:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.mg-zoom .mg-ico { width: 18px; height: 18px; }
+@media (hover: none) { .mg-zoom { opacity: 1; } }
 .mg-cap { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .mg-meta { font-size: 12px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* the buttons over a playing preview: the video is added on hover, after them, and would paint over them */
-.mg-zoom, .mg-del, .mg-dur, .mg-added { z-index: 1; }
+.mg-zoom, .mg-dur, .mg-added { z-index: 1; }
 
 /* the gallery over the chat (the button in a chat input): docked right above the input, which stays free; no backdrop */
 .mg-panel { position: fixed; z-index: 900; display: flex; flex-direction: column; min-height: 0; background: var(--background); border: 1px solid var(--border); border-radius: calc(var(--radius) * 1.5); box-shadow: var(--shadow-plate, 0 12px 40px rgba(0, 0, 0, .25)); }
@@ -65,7 +66,7 @@
 .mg-ico-chevron { -webkit-mask-image: url("icons/chevron.svg"); mask-image: url("icons/chevron.svg"); }
 .mg-ico-check { -webkit-mask-image: url("icons/check.svg"); mask-image: url("icons/check.svg"); }
 .mg-btn { display: grid; place-items: center; padding: 0; }
-.mg-added { position: absolute; left: 42px; top: 8px; width: 28px; height: 28px; border-radius: 999px; background: var(--primary); color: var(--primary-foreground, #fff); display: grid; place-items: center; pointer-events: none; }
+.mg-added { position: absolute; right: 8px; top: 8px; width: 28px; height: 28px; border-radius: 999px; background: var(--primary); color: var(--primary-foreground, #fff); display: grid; place-items: center; pointer-events: none; }
 .mg-added[hidden] { display: none; }
 .mg-added .mg-ico { width: 18px; height: 18px; }
 .mg-title { font-size: 13px; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -90,14 +91,14 @@
 .mg-lb-sum { width: fit-content; cursor: pointer; opacity: .75; user-select: none; }
 .mg-lb-sum:hover, .mg-lb-prompt[open] .mg-lb-sum { opacity: 1; }
 .mg-lb-text { margin-top: 6px; line-height: 1.45; opacity: .9; max-height: 9em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-.mg-lb-link { font-size: 13px; color: #fff; opacity: .75; width: fit-content; }
-.mg-lb-link:hover { opacity: 1; }
+.mg-lb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.mg-lb-act { display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .14); color: #fff; font: inherit; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; transition: background .15s; }
+.mg-lb-act:hover { background: rgba(255, 255, 255, .26); }
 .mg-lb-btn { position: absolute; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .14); color: #fff; cursor: pointer; transition: background .15s, opacity .15s; }
 .mg-lb-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .26); }
 .mg-lb-btn:disabled { opacity: .3; cursor: default; }
 .mg-lb-btn .mg-ico { width: 24px; height: 24px; }
 .mg-lb-x { right: 16px; top: 16px; }
-.mg-lb-del { right: 68px; top: 16px; }
 .mg-lb-nav { top: 50%; margin-top: -22px; }
 .mg-lb-prev { left: 16px; }
 .mg-lb-next { right: 16px; }
@@ -118,4 +119,4 @@
 .mg-open .mg-oi { display: block; width: 22px; height: 22px; background: currentColor;
   -webkit-mask: url("icon.svg") center / contain no-repeat; mask: url("icon.svg") center / contain no-repeat; }
 
-@media (prefers-reduced-motion: reduce) { .mg-card, .mg-video, .mg-del, .mg-zoom, .mg-lb-btn { transition: none; } .mg-card:hover { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .mg-card, .mg-video, .mg-zoom, .mg-lb-btn, .mg-lb-act { transition: none; } .mg-card:hover { transform: none; } }
