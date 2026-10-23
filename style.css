@@ -1,0 +1,52 @@
+/* Hub Motion Gallery. Colors, radius and fonts come from the hub theme. */
+.mg { display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 28px; min-height: 0; color: var(--foreground); }
+.mg-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.mg-search { flex: 1 1 260px; min-width: 0; height: 36px; padding: 0 12px; border: 1px solid var(--input); border-radius: var(--radius); background: var(--card); color: inherit; font: inherit; }
+.mg-search:focus-visible, .mg-select:focus-visible, .mg-btn:focus-visible, .mg-chip:focus-visible, .mg-card:focus-visible, .mg-close:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.mg-target { display: flex; align-items: center; gap: 6px; color: var(--muted-foreground); font-size: 13px; white-space: nowrap; }
+.mg-target[hidden] { display: none; }
+.mg-select { height: 36px; max-width: 220px; padding: 0 8px; border: 1px solid var(--input); border-radius: var(--radius); background: var(--card); color: var(--foreground); font: inherit; }
+.mg-btn { height: 36px; min-width: 36px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--muted-foreground); font: inherit; cursor: pointer; }
+.mg-btn:hover { color: var(--foreground); }
+.mg-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.mg-chips:empty { display: none; }
+.mg-chip { height: 28px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.mg-chip:hover { color: var(--foreground); border-color: var(--input); }
+.mg-chip.on { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground, #fff); }
+.mg-tags .mg-chip { height: 24px; padding: 0 9px; font-size: 12px; }
+.mg-count { color: var(--muted-foreground); font-size: 12px; min-height: 16px; }
+.mg-count:empty { display: none; }
+.mg-note { padding: 28px 8px; color: var(--muted-foreground); text-align: center; line-height: 1.5; max-width: 560px; margin: 0 auto; }
+.mg-note[hidden] { display: none; }
+
+.mg-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); align-items: start; }
+.mg-card { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); overflow: hidden; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.mg-card[hidden] { display: none; }
+.mg-card:hover { border-color: var(--input); box-shadow: var(--shadow-lift, 0 6px 18px rgba(0, 0, 0, .12)); transform: translateY(-1px); }
+.mg-media { position: relative; aspect-ratio: 16 / 10; background: var(--muted); overflow: hidden; }
+.mg-poster, .mg-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.mg-poster { background: var(--muted); }
+.mg-video { opacity: 0; transition: opacity .2s; background: transparent; }
+.mg-card.playing .mg-video { opacity: 1; }
+.mg-dur { position: absolute; right: 8px; bottom: 8px; padding: 1px 7px; border-radius: 999px; background: rgba(0, 0, 0, .62); color: #fff; font-size: 11px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.mg-link { position: absolute; left: 8px; top: 8px; width: 26px; height: 26px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; display: grid; place-items: center; text-decoration: none; font-size: 13px; opacity: 0; transition: opacity .15s; }
+.mg-card:hover .mg-link, .mg-card:focus-within .mg-link { opacity: 1; }
+.mg-cap { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mg-meta { font-size: 12px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mg-prompt { font-size: 13px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* the gallery over the page (the button in a chat input) */
+.mg-over { position: fixed; inset: 0; z-index: 9000; background: rgba(0, 0, 0, .45); display: grid; place-items: center; padding: 3vh 3vw; }
+.mg-panel { position: relative; width: min(1180px, 100%); max-height: 100%; overflow: auto; background: var(--background); border: 1px solid var(--border); border-radius: calc(var(--radius) * 1.5); box-shadow: var(--shadow-plate, 0 20px 60px rgba(0, 0, 0, .35)); }
+.mg-panel .mg { padding-top: 18px; }
+.mg-panel .mg-bar { padding-right: 44px; }
+.mg-close { position: absolute; right: 14px; top: 14px; width: 32px; height: 32px; border: 0; border-radius: 999px; background: var(--muted); color: var(--muted-foreground); font-size: 14px; cursor: pointer; z-index: 1; }
+.mg-close:hover { color: var(--foreground); }
+
+.mg-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 9100; max-width: min(520px, 90vw); padding: 10px 16px; border-radius: var(--radius); background: var(--foreground); color: var(--background); font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
+
+/* the button before the microphone (the composer.tools slot) */
+.mg-open .mg-oi { display: block; width: 22px; height: 22px; background: currentColor;
+  -webkit-mask: url("icon.svg") center / contain no-repeat; mask: url("icon.svg") center / contain no-repeat; }
+
+@media (prefers-reduced-motion: reduce) { .mg-card, .mg-video, .mg-link { transition: none; } .mg-card:hover { transform: none; } }

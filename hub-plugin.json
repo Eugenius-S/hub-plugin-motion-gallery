@@ -1,0 +1,19 @@
+{
+  "name": "motion-gallery",
+  "icon": "icon.png",
+  "description": "Motion Gallery: a dashboard of motion examples, like Hub Design but without a canvas. A grid of cards with a poster; hover a card and a short muted preview plays (one at a time, loaded only on hover), leave and it returns to the poster. Filter by category and tags, search the prompts. A click puts the example into a chat input: the poster as a picture and the full prompt as text, nothing is sent. The view inserts into the chat you opened last (or the one picked at the top); a button before the microphone in any chat input opens the gallery over the page and inserts into that chat. The gallery is a folder (extensions → motion-gallery → gallery_dir) with gallery.json, previews/ and posters/; preview and poster can also be URLs. Empty until the folder is set",
+  "why": "Picking a ready example is faster than describing the motion in words",
+  "version": "0.1.0",
+  "hub": "^1.7",
+  "web": "main.js",
+  "run": [
+    "python3",
+    "server.py"
+  ],
+  "i18n": {
+    "ru": {
+      "description": "Галерея движения (Motion Gallery): дашборд с примерами движения — как Hub Design, только без холста. Сетка карточек с постером; наведи — играет короткое превью без звука (по одному, грузится только при наведении), уходишь — снова постер. Фильтр по категориям и тегам, поиск по промтам. Клик кладёт пример в поле ввода чата: постер картинкой и полный промт текстом, ничего не отправляется. Вид вставляет в чат, открытый последним (или выбранный сверху); кнопка перед микрофоном в поле ввода любого чата открывает галерею поверх страницы и вставляет в этот чат. Галерея — папка (extensions → motion-gallery → gallery_dir) с gallery.json, previews/ и posters/; превью и постер могут быть и адресами. Пока папка не задана — пусто",
+      "why": "Выбрать готовый пример быстрее, чем описывать движение словами"
+    }
+  }
+}
