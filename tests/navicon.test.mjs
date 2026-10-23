@@ -16,6 +16,10 @@ test("navicon.css: the outline/filled layers and the gradient sweep cover the me
   assert.match(css, /\.srow\.nav \.ext-icon\[style\*="motion-gallery\/icon\.svg"\]/);
   assert.match(css, /:is\(\.srow\.nav, \.mg-open\):is\(:hover, :focus-visible, \.on\)/);   // hover, focus and the open gallery
   assert.match(css, /icon-filled\.svg/);
+  assert.match(css, /repeating-radial-gradient\(circle closest-side at 50% 50%/);   // rings from the center, not a linear sweep
+  assert.match(css, /@property --mgi-r \{ syntax: "<percentage>"/);
+  assert.match(css, /@keyframes mgi-wave \{ to \{ --mgi-r: 60%; \} \}/);   // one full period: no seam in the loop
+  assert.doesNotMatch(css, /linear-gradient|mgi-sweep/);
   const rm = css.slice(css.indexOf("prefers-reduced-motion"));
   assert.match(rm, /animation: none/);
   assert.match(rm, /transform: none/);

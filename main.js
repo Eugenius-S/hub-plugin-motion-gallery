@@ -273,7 +273,7 @@ export default function register(h) {
   setLangSource(() => hub.lang);   // read on every use, never at load
   hub.addStyle("style.css");
   interceptSend();
-  hub.addStyle("navicon.css");   // the icon turns filled with a gradient on hover (the menu and the input button)
+  hub.addStyle("navicon.css");   // the icon turns filled with radial waves on hover (the menu and the input button)
   // the question of the first start (what is preinstalled, how long and how much the download takes): a card over the page until it is answered; in Telegram too
   const first = createFirstRun({ hub, base, local, agents: lackNow, install });
   document.body.append(first.node);

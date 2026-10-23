@@ -1,5 +1,5 @@
 /* Motion Gallery icon in the sidebar / ☰ menu and on the gallery button in a session's input: on hover (and while the gallery is
-   open) the outline play circle turns filled and a pink/primary gradient sweeps over it, like the send button's color. The menu
+   open) the outline play circle turns filled and soft pink/primary rings spread from its center like waves, in the send button's colors. The menu
    icon is drawn by the core as a mask (.ext-icon, --src), the button holds an empty span (.mg-oi); in both, two layers replace
    it: the outline (::before, currentColor) and the filled circle with the gradient (::after), cross-faded by opacity, since a
    mask image cannot be transitioned. Only our icon matches the selectors; the file paths resolve against this stylesheet. */
@@ -19,14 +19,25 @@
 }
 :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::after {
   -webkit-mask-image: url("icon-filled.svg"); mask-image: url("icon-filled.svg"); opacity: 0;
-  background: linear-gradient(90deg, var(--primary), var(--mgi-pink), color-mix(in oklab, var(--primary) 55%, var(--mgi-pink)), var(--primary)) 0 0 / 200% 100% repeat-x;
+  background: repeating-radial-gradient(circle closest-side at 50% 50%,
+    var(--primary) calc(var(--mgi-r) + 0%),
+    color-mix(in oklab, var(--mgi-pink) 15%, var(--primary)) calc(var(--mgi-r) + 7.5%),
+    color-mix(in oklab, var(--mgi-pink) 50%, var(--primary)) calc(var(--mgi-r) + 15%),
+    color-mix(in oklab, var(--mgi-pink) 85%, var(--primary)) calc(var(--mgi-r) + 22.5%),
+    var(--mgi-pink) calc(var(--mgi-r) + 30%),
+    color-mix(in oklab, var(--mgi-pink) 85%, var(--primary)) calc(var(--mgi-r) + 37.5%),
+    color-mix(in oklab, var(--mgi-pink) 50%, var(--primary)) calc(var(--mgi-r) + 45%),
+    color-mix(in oklab, var(--mgi-pink) 15%, var(--primary)) calc(var(--mgi-r) + 52.5%),
+    var(--primary) calc(var(--mgi-r) + 60%));
 }
 :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi) { transform: scale(1.12); }
 :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::before { opacity: 0; }
 :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::after {
-  opacity: 1; animation: mgi-sweep 1.8s linear infinite;
+  opacity: 1; animation: mgi-wave 2.4s linear infinite;
 }
-@keyframes mgi-sweep { to { background-position: 200% 0; } }
+/* --mgi-r moves the rings outward by exactly one period (60% of the radius), so the loop has no seam */
+@property --mgi-r { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+@keyframes mgi-wave { to { --mgi-r: 60%; } }
 @media (prefers-reduced-motion: reduce) {
   :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi),
   :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::before,

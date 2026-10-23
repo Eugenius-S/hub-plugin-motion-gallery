@@ -111,7 +111,7 @@ node --test tests/*.test.mjs
 PYTHONPATH=<hub code> python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
-The icons of the plugin (close, reload, open, check mark, the view and the input button) are [Icons8 Material](https://icons8.com/icons/material-outlined): outlined, and filled (`icon-filled.svg`) for the hover, where the icon turns filled with a pink/primary gradient (`navicon.css`); with reduced motion it stays still.
+The icons of the plugin (close, reload, open, check mark, the view and the input button) are [Icons8 Material](https://icons8.com/icons/material-outlined): outlined, and filled (`icon-filled.svg`) for the hover, where the icon turns filled and soft pink/primary waves spread from its center (`navicon.css`); with reduced motion it stays still.
 
 Icon — [3D Fluency](https://icons8.com/icons/3d-fluency) from Icons8.
 
