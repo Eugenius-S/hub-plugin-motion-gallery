@@ -78,7 +78,7 @@ node --test tests/*.test.mjs
 python3 -m unittest discover -s tests
 ```
 
-The icons of the plugin (close, reload, open, check mark) are [Icons8 Material Outlined](https://icons8.com/icons/material-outlined), painted in the text color.
+The icons of the plugin (close, reload, open, check mark, the view and the input button) are [Icons8 Material](https://icons8.com/icons/material-outlined): outlined, and filled (`icon-filled.svg`) for the hover, where the icon turns filled with a pink/primary gradient (`navicon.css`); with reduced motion it stays still.
 
 Icon — [3D Fluency](https://icons8.com/icons/3d-fluency) from Icons8.
 

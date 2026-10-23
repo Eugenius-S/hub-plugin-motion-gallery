@@ -3,7 +3,7 @@
   "icon": "icon.png",
   "description": "Motion Gallery: a dashboard of motion examples, like Hub Design but without a canvas. A grid of cards with a poster; hover a card and a short muted preview plays (one at a time, loaded only on hover), leave and it returns to the poster. Filter by category, source and tags, search the prompts. A click puts the example into a chat input: the poster as a picture and the full prompt as text, nothing is sent. The view inserts into the chat you opened last (or the one picked at the top); a button before the microphone in any chat input opens the gallery right above that input (the input stays free: click several examples in a row and keep typing; a cross in the corner closes it) and inserts into that chat. The gallery is a folder (extensions → motion-gallery → gallery_dir) with gallery.json, previews/ and posters/; preview and poster can also be URLs. Files can also come from a public web link (media_base). Empty until the folder or the link is set",
   "why": "Picking a ready example is faster than describing the motion in words",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "hub": "^1.7",
   "web": "main.js",
   "run": [

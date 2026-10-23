@@ -1,0 +1,36 @@
+/* Motion Gallery icon in the sidebar / ☰ menu and on the gallery button in a session's input: on hover (and while the gallery is
+   open) the outline play circle turns filled and a pink/primary gradient sweeps over it, like the send button's color. The menu
+   icon is drawn by the core as a mask (.ext-icon, --src), the button holds an empty span (.mg-oi); in both, two layers replace
+   it: the outline (::before, currentColor) and the filled circle with the gradient (::after), cross-faded by opacity, since a
+   mask image cannot be transitioned. Only our icon matches the selectors; the file paths resolve against this stylesheet. */
+:is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi) {
+  --mgi-pink: light-dark(#ec3f97, #ff7ab8);
+  position: relative; background: none; -webkit-mask: none; mask: none;
+  transition: transform .28s cubic-bezier(.34, 1.56, .64, 1);
+}
+:is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::before,
+:is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::after {
+  content: ""; position: absolute; inset: 0;
+  -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat;
+  transition: opacity .22s ease;
+}
+:is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::before {
+  background: currentColor; -webkit-mask-image: url("icon.svg"); mask-image: url("icon.svg"); opacity: 1;
+}
+:is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::after {
+  -webkit-mask-image: url("icon-filled.svg"); mask-image: url("icon-filled.svg"); opacity: 0;
+  background: linear-gradient(90deg, var(--primary), var(--mgi-pink), color-mix(in oklab, var(--primary) 55%, var(--mgi-pink)), var(--primary)) 0 0 / 200% 100% repeat-x;
+}
+:is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi) { transform: scale(1.12); }
+:is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::before { opacity: 0; }
+:is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::after {
+  opacity: 1; animation: mgi-sweep 1.8s linear infinite;
+}
+@keyframes mgi-sweep { to { background-position: 200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi),
+  :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::before,
+  :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::after { transition: none; }
+  :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi) { transform: none; }
+  :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::after { animation: none; }
+}

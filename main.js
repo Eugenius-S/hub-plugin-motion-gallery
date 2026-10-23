@@ -199,6 +199,7 @@ export default function register(h) {
   hub = h;
   setLangSource(() => hub.lang);   // read on every use, never at load
   hub.addStyle("style.css");
+  hub.addStyle("navicon.css");   // the icon turns filled with a gradient on hover (the menu and the input button)
   remember(location.hash);
   addEventListener("hashchange", () => remember(location.hash));
   hub.addView({

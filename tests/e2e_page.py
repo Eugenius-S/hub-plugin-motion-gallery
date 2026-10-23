@@ -373,9 +373,62 @@ class Real(Sandbox):
         self.assertEqual(self.sent(), [])
 
 
+def probe(sel):
+    """The two layers of an icon (navicon.css) and its scale: opacity of the outline (::before) and of the filled circle (::after)."""
+    return ("(() => { const n = document.querySelector(%s); if (!n) return null; const b = getComputedStyle(n, '::before'), a = getComputedStyle(n, '::after'); "
+            "const m = new DOMMatrix(getComputedStyle(n).transform); return [b.opacity, a.opacity, +m.a.toFixed(2), a.maskImage.includes('icon-filled.svg') || a.webkitMaskImage.includes('icon-filled.svg'), a.backgroundImage.includes('gradient')]; })()") % json.dumps(sel)
+
+
+BTN = "form.composer .mg-open .mg-oi"
+NAV = '#nav-extra .srow.nav .ext-icon[style*="motion-gallery/icon.svg"]'
+
+
+@unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
+class Icon(Sandbox):
+    """The icon of the view (the menu) and the gallery button in the input: outline at rest, filled with a gradient on hover."""
+    def test_icon_turns_filled_with_a_gradient_on_hover(self):
+        r = self.run_steps([
+            (None, {"go": self.url + "#/s/b", "init": COLLECT}),
+            (None, {"until": "!!document.querySelector('form.composer .mg-open')", "ms": 10000}),
+            (None, {"eval": "document.body.style.zoom = 3; 1"}),   # the icon is 22 px: a magnified page for the picture
+            (None, {"sleep": 400}),
+            ("btn_rest", {"eval": probe(BTN)}),
+            (None, self.shot("icon-button-rest.png", width=1300, height=520)),
+            # the driver has no hover step: a held mouse (pressed on the button, moved over it, never released) keeps :hover
+            (None, {"drag": "form.composer .mg-open", "to": "form.composer .mg-open", "keep": True}),
+            (None, {"sleep": 600}),
+            ("btn_hover", {"eval": probe(BTN)}),
+            (None, self.shot("icon-button-hover.png", width=1300, height=520)),
+        ])
+        self.assertEqual(r["btn_rest"]["eval"][:2], ["1", "0"], "at rest the outline shows, the filled layer is hidden")
+        self.assertEqual(r["btn_rest"]["eval"][2], 1)
+        self.assertEqual(r["btn_rest"]["eval"][3:], [True, True], "the filled layer is the filled icon with a gradient")
+        self.assertEqual(r["btn_hover"]["eval"][:2], ["0", "1"], "on hover the outline goes, the filled gradient layer comes")
+        self.assertGreater(r["btn_hover"]["eval"][2], 1.05, "and the icon grows a little")
+
+    def test_menu_icon_turns_filled_with_a_gradient_on_hover(self):
+        r = self.run_steps([
+            (None, {"go": self.url + "#/s/b", "init": COLLECT}),
+            # the menu is built after the first snapshot and its button is bound with it: click only when our item is there
+            (None, {"until": "!!document.querySelector('#navmenu[data-bound]') && !!document.querySelector('%s')" % NAV, "ms": 10000}),
+            (None, {"eval": "document.querySelector('#navmenu').click(); document.body.style.zoom = 3; 1"}),
+            (None, {"until": "!document.querySelector('#nav-extra').hidden", "ms": 6000}),
+            (None, {"sleep": 400}),
+            ("nav_rest", {"eval": probe(NAV)}),
+            (None, self.shot("icon-menu-rest.png", width=1300, height=700)),
+            (None, {"drag": '.srow.nav:has(.ext-icon[style*="motion-gallery/icon.svg"])', "to": '.srow.nav:has(.ext-icon[style*="motion-gallery/icon.svg"])', "keep": True}),
+            (None, {"sleep": 600}),
+            ("nav_hover", {"eval": probe(NAV)}),
+            (None, self.shot("icon-menu-hover.png", width=1300, height=700)),
+        ])
+        self.assertEqual(r["nav_rest"]["eval"][:2], ["1", "0"])
+        self.assertEqual(r["nav_hover"]["eval"][:2], ["0", "1"])
+        self.assertGreater(r["nav_hover"]["eval"][2], 1.05)
+
+
 if __name__ == "__main__":
     # Page inherits PageInChrome: only our own tests, not the whole hub e2e suite
-    own = [f"{c.__name__}.{n}" for c in (Page, Ghost, Real) for n in vars(c) if n.startswith("test_")]
+    own = [f"{c.__name__}.{n}" for c in (Page, Ghost, Real, Icon) for n in vars(c) if n.startswith("test_")]
     names = [a for a in sys.argv[1:] if not a.startswith("-")]
     flags = [a for a in sys.argv[1:] if a.startswith("-")]
     unittest.main(argv=[sys.argv[0], *flags, *(names or own)])
