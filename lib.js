@@ -82,9 +82,53 @@ export function targets(sessions, last) {
   return last && names.includes(last) ? [last, ...names.filter((n) => n !== last)] : names;
 }
 
-// a file name for the poster that goes with the message: <slug>.<ext by the mime>
-const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif" };
-export const posterName = (item, mime) => `${String(item.slug || "example").replace(/[^\w.-]/g, "-")}.${EXT[mime] || "jpg"}`;
+// ---- tags: a click on a card puts "(Name)" at the cursor of the chat input; the prompt, the video and the preview of every
+// tag still in the text are added under the message when it is sent (see main.js) and never stay in the input.
+export const REFS_MARK = "Refs from Motion Gallery";
+
+// the tag of an example in the input: "(Title)"; a second example with the same title becomes "(Title 2)", "(Title 3)"…
+// `taken` is Map tag -> slug of the tags this input already holds; the same example always gets its own tag back
+export function tagFor(item, taken) {
+  const name = String(item?.title || item?.slug || "example").replace(/\s+/g, " ").trim();
+  for (let n = 1; ; n++) {
+    const tag = `(${n > 1 ? `${name} ${n}` : name})`;
+    if (!taken.has(tag) || taken.get(tag) === item.slug) return tag;
+  }
+}
+
+// `text` into `value` over the selection [start, end]: a space is added where it would stick to a word; -> {value, pos}
+export function insertAt(value, start, end, text) {
+  const s = Math.max(0, Math.min(Number.isInteger(start) ? start : value.length, value.length));
+  const e = Math.max(s, Math.min(Number.isInteger(end) ? end : s, value.length));
+  const before = s > 0 && !/\s/.test(value[s - 1]) ? " " : "";
+  const after = e < value.length && /\s/.test(value[e]) ? "" : " ";
+  const put = before + text + after;
+  return { value: value.slice(0, s) + put + value.slice(e), pos: s + put.length };
+}
+
+// the entries (for withRefs) of the tags that are still in the text, each example once, in the order of the text
+export function usedRefs(value, tags) {
+  const seen = new Set(), out = [];
+  const found = [...tags].map(([tag, ref]) => ({ tag, ref, at: value.indexOf(tag) })).filter((x) => x.at >= 0).sort((a, b) => a.at - b.at);
+  for (const { tag, ref } of found) if (!seen.has(tag)) { seen.add(tag); out.push({ tag, ...ref }); }
+  return out;
+}
+
+// the text under the message: for every tag - its prompt and the links to the video and the preview
+export function refsBlock(entries) {
+  return REFS_MARK + " (the tags in the message above stand for these examples):\n\n" + entries.map((r) =>
+    [r.tag, r.prompt && "Prompt: " + r.prompt, r.video && "Video: " + r.video, r.preview && "Preview: " + r.preview, r.source && "Source: " + r.source].filter(Boolean).join("\n")).join("\n\n");
+}
+
+// the message with its refs (an old block is replaced, so doing it twice is the same as once)
+export function stripRefs(value) {
+  const at = value.indexOf("\n\n" + REFS_MARK);
+  return at < 0 ? value : value.slice(0, at);
+}
+export function withRefs(value, entries) {
+  const base = stripRefs(value);
+  return entries.length ? base.replace(/\s+$/, "") + "\n\n" + refsBlock(entries) : base;
+}
 
 // the address of a process answer: relative paths ("/f/…") belong to the process, URLs stay as they are
 export const mediaUrl = (base, src) => (!src ? "" : /^https?:\/\//i.test(src) ? src : base + src);

@@ -17,9 +17,12 @@ test("the runner is the plugin's own APNG; reduced motion gets a still PNG of th
 
 test("by default the runner is as small as the palette icon of Hub Design (20 px): under the list, on a card, in the lightbox", async () => {
   globalThis.matchMedia = () => ({ matches: false });
-  const { runner, RUNNER_PX } = await import("../loader.js");
+  const { runner, RUNNER_PX, LOADING_PX } = await import("../loader.js");
   assert.equal(RUNNER_PX, 20);
   assert.equal(runner(el).style.width, "20px");
+  assert.equal(LOADING_PX, 40);   // the first load screen under the list is twice as big (owner), nowhere else
+  assert.equal(runner(el, LOADING_PX).style.width, "40px");
+  assert.match(readFileSync(new URL("../gallery.js", import.meta.url), "utf8"), /note\.prepend\(runner\(el, LOADING_PX\)\)/);
   for (const f of ["../gallery.js", "../lightbox.js"]) {
     const src = readFileSync(new URL(f, import.meta.url), "utf8");
     assert.ok(!/runner\(el, \d+\)/.test(src), f + " takes the default size");

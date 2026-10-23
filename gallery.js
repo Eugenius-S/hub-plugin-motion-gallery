@@ -1,17 +1,19 @@
 // Hub Motion Gallery: the grid of examples - used by the view and by the overlay from a chat input.
 // Many entries are fine: the DOM is built once per list, a filter only hides cards; posters get their address when a card
 // comes near the screen (IntersectionObserver), a video exists only while the mouse is over a card, one at a time.
-import { categories, excerpt, filterItems, fmtDuration, linksOf, mediaUrl, metaLine, sourceList, tagList } from "./lib.js";
+import { categories, filterItems, fmtDuration, mediaUrl, metaLine, sourceList, tagList } from "./lib.js";
 import { closeLightbox, openLightbox } from "./lightbox.js";
-import { isDark, runner } from "./loader.js";
+import { LOADING_PX, isDark, runner, runnerDisc } from "./loader.js";
 
 const HOVER_MS = 140;   // the mouse must stay this long: a sweep over the grid starts no video
 
 // props: el (hub.el), tr (translator), base() -> process address or "" (not reachable from here), onPick(item),
+//        onDelete(item)? - the cross in the corner of a card (shown only when the process allows deleting): the caller hides the
+//        card with hide() for the time of the undo and takes the example off the disk when that time is over,
 //        session? { get(), set(name), list() } - "Insert into" choice (the view; the overlay inserts into its own chat)
-export function createGallery({ el, tr, base, onPick, session = null }) {
+export function createGallery({ el, tr, base, onPick, onDelete = null, session = null }) {
   const ico = (name) => { const s = el("span", "mg-ico mg-ico-" + name); s.setAttribute("aria-hidden", "true"); return s; };
-  const S ={ data: null, status: "loading", q: "", category: "", source: "", tags: new Set(), cards: new Map(), sig: "", shown: 0, added: new Set() };
+  const S ={ data: null, status: "loading", q: "", category: "", source: "", tags: new Set(), cards: new Map(), sig: "", shown: 0, added: new Set(), pending: new Set(), canDelete: false };
   let cur = null, timer = 0, io = null, toolsSig = "", light = null;
 
   const root = el("div", "mg");
@@ -83,34 +85,31 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     media.append(img);
     const dur = fmtDuration(item.duration);
     if (dur) media.append(el("span", "mg-dur", dur));
-    const links = linksOf(item);
-    if (links.length) {
-      const a = el("a", "mg-link");
-      a.append(ico("open"));
-      a.href = links[0].url;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      a.title = [tr("open_post"), links[0].source].filter(Boolean).join(" · ");
-      a.setAttribute("aria-label", a.title);
-      a.addEventListener("click", (e) => e.stopPropagation());
-      media.append(a);
-    }
+    // the link to the source and the prompt live in the lightbox only (the card is a poster and a name)
     const cap = el("div", "mg-cap");
     const meta = metaLine(item);
     if (meta) cap.append(el("div", "mg-meta", meta));
     if (item.title) cap.append(el("div", "mg-title", item.title));
-    const body = item.prompt || item.skill?.desc || "";
-    if (body) cap.append(el("div", "mg-prompt", excerpt(body)));
     card.append(media, cap);
-    card.title = (item.title ? item.title + "\n" : "") + (body ? body.slice(0, 400) : item.slug);
+    card.title = item.title || item.slug;
     const zoom = el("button", "mg-zoom");
     zoom.type = "button";
-    zoom.append(ico("plus"));
+    zoom.append(ico("zoom"));
     zoom.title = tr("expand");
     zoom.setAttribute("aria-label", tr("expand"));
     zoom.addEventListener("click", (e) => { e.stopPropagation(); expand(item); });   // not a pick: nothing goes into the chat
     zoom.addEventListener("keydown", (e) => e.stopPropagation());
     media.append(zoom);
+    if (S.canDelete && onDelete) {
+      const del = el("button", "mg-del");
+      del.type = "button";
+      del.append(ico("close"));
+      del.title = tr("delete");
+      del.setAttribute("aria-label", tr("delete"));
+      del.addEventListener("click", (e) => { e.stopPropagation(); onDelete(item); });   // no dialog: the undo plate is the safety net
+      del.addEventListener("keydown", (e) => e.stopPropagation());
+      media.append(del);
+    }
     const done = el("span", "mg-added");
     done.append(ico("check"));
     done.hidden = !S.added.has(item.slug);
@@ -125,8 +124,8 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
   // the lightbox steps through what the filters show now, in the order of the grid
   function expand(item) {
     stop();
-    const shown = (S.data?.items || []).filter((i) => !S.cards.get(i.slug)?.hidden);
-    light = openLightbox({ el, tr, base, items: shown, index: shown.indexOf(item), onClose: () => { light = null; } });
+    const shown = (S.data?.items || []).filter((i) => !S.cards.get(i.slug)?.hidden && !S.pending.has(i.slug));
+    light = openLightbox({ el, tr, base, items: shown, index: shown.indexOf(item), onDelete: S.canDelete ? onDelete : null, onClose: () => { light = null; } });
   }
 
   function observe() {
@@ -137,7 +136,7 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
         const img = h.target;
         if (img.dataset.src && !img.src) {
           // the running man stays on the card from the moment the poster is asked until it is drawn
-          const run = runner(el);
+          const run = runnerDisc(el);
           const done = () => run.remove();
           img.addEventListener("load", done, { once: true });
           img.addEventListener("error", done, { once: true });
@@ -193,7 +192,7 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     if (note.dataset.sig !== sig) {
       note.dataset.sig = sig;
       note.textContent = text;
-      if (run) note.prepend(runner(el));
+      if (run) note.prepend(runner(el, LOADING_PX));
     }
     note.hidden = !text;
   }
@@ -202,8 +201,8 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     stop();
     const items = S.data?.items || [];
     const keep = new Set(filterItems(items, { q: S.q, category: S.category, source: S.source, tags: [...S.tags] }).map((i) => i.slug));
-    for (const [slug, card] of S.cards) card.hidden = !keep.has(slug);
-    S.shown = keep.size;
+    for (const [slug, card] of S.cards) card.hidden = !keep.has(slug) || S.pending.has(slug);
+    S.shown = [...keep].filter((slug) => !S.pending.has(slug)).length;
     drawNote();
   }
 
@@ -217,10 +216,12 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     } catch { /* the process is not up */ }
     if (!data || !Array.isArray(data.items)) { S.status = "offline"; return applyFilter(); }
     S.status = "ok";
-    const sig = JSON.stringify(data.items.map((i) => [i.slug, i.poster, i.preview, i.video, i.prompt, i.category, i.author, i.duration, i.title, i.skill, i.tags, i.sources, i.links, i.post, i.page]));
+    const canDelete = !!data.can_delete;
+    const sig = canDelete + JSON.stringify(data.items.map((i) => [i.slug, i.poster, i.preview, i.video, i.prompt, i.category, i.author, i.duration, i.title, i.skill, i.tags, i.sources, i.links, i.post, i.page]));
     S.data = data;
     if (sig !== S.sig) {
       S.sig = sig;
+      S.canDelete = canDelete;
       S.cards = new Map(data.items.map((i) => [i.slug, buildCard(i)]));
       grid.replaceChildren(...S.cards.values());
       if (S.category && !data.items.some((i) => i.category === S.category)) S.category = "";
@@ -259,7 +260,14 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     if (badge) badge.hidden = false;
   }
 
+  // the card of an example that waits for its undo is out of the grid (on = hide, off = back)
+  function hide(slug, on) {
+    on ? S.pending.add(slug) : S.pending.delete(slug);
+    stop();
+    applyFilter();
+  }
+
   update();
   load();
-  return { node: root, load, update, stop, mark, focus: () => search.focus(), destroy() { stop(); if (light) closeLightbox(); io?.disconnect(); } };
+  return { node: root, load, update, stop, mark, hide, focus: () => search.focus(), destroy() { stop(); if (light) closeLightbox(); io?.disconnect(); } };
 }

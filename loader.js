@@ -6,6 +6,8 @@ const calm = () => typeof matchMedia === "function" && matchMedia("(prefers-redu
 // The size is that of the palette icon of Hub Design (its "Style" button, the menu): the silhouette is ~94% of the 100 px picture,
 // 20 px gives ~19 px of runner against ~17-18 px of the palette. The same everywhere: under the list, on a card, in the lightbox.
 export const RUNNER_PX = 20;
+// the main loading screen (the gallery opens, gallery.json loads) is twice as big: it is the only thing on the page then
+export const LOADING_PX = 40;
 
 // <img class="mg-run"> (decorative); the caller removes it when the wait is over
 export function runner(el, size = RUNNER_PX) {
@@ -17,6 +19,14 @@ export function runner(el, size = RUNNER_PX) {
   img.style.width = img.style.height = size + "px";
   img.setAttribute("aria-hidden", "true");
   return img;
+}
+
+// the runner over a video or a poster: white inside a round black plate (rgba .8), readable on any picture; the caller removes
+// the plate (.mg-disc) when the wait is over. On the "loading" screen under the list there is no plate: plain runner().
+export function runnerDisc(el, size = RUNNER_PX) {
+  const disc = el("span", "mg-disc");
+  disc.append(runner(el, size));
+  return disc;
 }
 
 // the dark theme of the hub paints text light: the black icon is inverted (the hub sets color-scheme on the root)

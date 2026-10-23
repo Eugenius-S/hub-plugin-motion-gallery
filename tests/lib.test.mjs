@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { categories, chatText, excerpt, filterItems, fmtDuration, lightVideo, linksOf, matches, mediaUrl, metaLine, posterName, processPort, sessionOf, sourceList, stepIndex, tagList, targets } from "../lib.js";
+import { categories, chatText, excerpt, filterItems, fmtDuration, lightVideo, linksOf, matches, mediaUrl, metaLine, processPort, refsBlock, sessionOf, sourceList, stepIndex, stripRefs, tagFor, tagList, targets, insertAt, usedRefs, withRefs } from "../lib.js";
 
 const ITEMS = [
   { slug: "a-1", category: "Product", author: "Anna", tags: ["loop", "3d"], prompt: "A glossy bottle spins on a pedestal" },
@@ -83,9 +83,7 @@ test("targets: the last opened first, no duplicates, unknown last ignored", () =
   assert.deepEqual(targets(null, "a"), []);
 });
 
-test("posterName and mediaUrl", () => {
-  assert.equal(posterName({ slug: "a b/c" }, "image/png"), "a-b-c.png");
-  assert.equal(posterName({ slug: "x" }, "image/unknown"), "x.jpg");
+test("mediaUrl", () => {
   assert.equal(mediaUrl("http://h:1", "/f/a.mp4"), "http://h:1/f/a.mp4");
   assert.equal(mediaUrl("http://h:1", "https://cdn/x.jpg"), "https://cdn/x.jpg");
   assert.equal(mediaUrl("http://h:1", ""), "");
@@ -127,4 +125,36 @@ test("lightVideo: the full video, else the preview, else nothing", () => {
   assert.equal(lightVideo({ preview: "/f/p.mp4" }), "/f/p.mp4");
   assert.equal(lightVideo({ poster: "/f/x.jpg" }), "");
   assert.equal(lightVideo(null), "");
+});
+
+test("tagFor: the title in brackets, a second example with the same title gets a number, the same one its own tag back", () => {
+  const taken = new Map();
+  assert.equal(tagFor({ slug: "a", title: "White  Russian animations" }, taken), "(White Russian animations)");
+  taken.set("(White Russian animations)", "a");
+  assert.equal(tagFor({ slug: "a", title: "White Russian animations" }, taken), "(White Russian animations)");
+  assert.equal(tagFor({ slug: "b", title: "White Russian animations" }, taken), "(White Russian animations 2)");
+  assert.equal(tagFor({ slug: "only-slug" }, taken), "(only-slug)");
+});
+
+test("insertAt: at the cursor, a space only where the text would stick; a selection is replaced", () => {
+  assert.deepEqual(insertAt("", 0, 0, "(A)"), { value: "(A) ", pos: 4 });
+  assert.deepEqual(insertAt("hello", 5, 5, "(A)"), { value: "hello (A) ", pos: 10 });
+  assert.deepEqual(insertAt("make it like  now", 13, 13, "(A)"), { value: "make it like (A) now", pos: 16 });
+  assert.deepEqual(insertAt("do XX now", 3, 5, "(A)"), { value: "do (A) now", pos: 6 });
+  assert.equal(insertAt("abc", undefined, undefined, "(A)").value, "abc (A) ");
+});
+
+test("refs: only tags still in the text go with the message, once, and doing it twice changes nothing", () => {
+  const tags = new Map([["(A)", { slug: "a", prompt: "pa", video: "http://v/a.mp4", preview: "http://v/a-p.mp4", source: "https://s/a" }], ["(B)", { slug: "b", prompt: "pb" }], ["(C)", { slug: "c", prompt: "pc" }]]);
+  const text = "use (B) then (A) and again (B)";
+  const used = usedRefs(text, tags);
+  assert.deepEqual(used.map((r) => r.tag), ["(B)", "(A)"]);
+  const sent = withRefs(text, used);
+  assert.ok(sent.startsWith(text + "\n\n"));
+  for (const must of ["Prompt: pa", "Prompt: pb", "Video: http://v/a.mp4", "Preview: http://v/a-p.mp4", "Source: https://s/a"]) assert.ok(sent.includes(must), must);
+  assert.ok(!sent.includes("pc"));
+  assert.equal(withRefs(sent, used), sent);
+  assert.equal(stripRefs(sent), text);
+  assert.equal(withRefs(text, []), text);
+  assert.ok(refsBlock(used).startsWith("Refs from Motion Gallery"));
 });

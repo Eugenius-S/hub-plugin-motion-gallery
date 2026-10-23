@@ -1,72 +1,65 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendText, insertInto, openComposer, pasteFile, waitComposer } from "../insert.js";
+import { attachRefs, detachRefs, insertTag, interceptSend, openComposer, tagsOf, waitComposer } from "../insert.js";
 
 // no DOM in node: just enough of it
 class FakeTA {
-  constructor(value = "") { this.value = value; this.events = []; this.focused = false; this.pasted = []; this.sel = null; }
-  dispatchEvent(ev) {
-    this.events.push(ev.type);
-    if (ev.type === "paste") this.pasted.push(...ev.clipboardData.files);
-    return true;
-  }
+  constructor(value = "") { this.value = value; this.events = []; this.focused = false; this.sel = null; this.selectionStart = value.length; this.selectionEnd = value.length; this.tagName = "TEXTAREA"; }
+  dispatchEvent(ev) { this.events.push(ev.type); return true; }
   focus() { this.focused = true; }
-  setSelectionRange(a, b) { this.sel = [a, b]; }
+  setSelectionRange(a, b) { this.sel = [a, b]; this.selectionStart = a; this.selectionEnd = b; }
 }
 const form = (ta) => ({ querySelector: (s) => (s === "textarea" ? ta : null) });
 
-function fakeClipboard({ keepFiles = true } = {}) {
-  globalThis.DataTransfer = class { constructor() { this.files = []; this.items = { add: (f) => this.files.push(f) }; } };
-  globalThis.ClipboardEvent = class { constructor(type, init) { this.type = type; this.clipboardData = keepFiles ? init.clipboardData : null; } };
-}
-
-test("appendText: after what is typed, on a new line; the page is told by input", () => {
-  const ta = new FakeTA("hello");
-  appendText(ta, "prompt");
-  assert.equal(ta.value, "hello\nprompt");
+test("insertTag: at the cursor, the page is told by input, the cursor goes after the tag", () => {
+  const ta = new FakeTA("make like  now");
+  ta.setSelectionRange(10, 10);
+  assert.equal(insertTag(form(ta), "(A)"), true);
+  assert.equal(ta.value, "make like (A) now");
   assert.deepEqual(ta.events, ["input"]);
-  assert.deepEqual(ta.sel, [12, 12]);
-  const t2 = new FakeTA("hello\n");
-  appendText(t2, "p");
-  assert.equal(t2.value, "hello\np");
-  const t3 = new FakeTA("");
-  appendText(t3, "p");
-  assert.equal(t3.value, "p");
-  const t4 = new FakeTA("keep");
-  appendText(t4, "");
-  assert.equal(t4.value, "keep");
-  assert.deepEqual(t4.events, []);
-});
-
-test("insertInto: the picture as a paste, then the text; nothing is submitted", () => {
-  fakeClipboard();
-  const ta = new FakeTA("");
-  const file = { name: "a.jpg" };
-  assert.deepEqual(insertInto(form(ta), { text: "the prompt", file }), { file: true, text: true });
-  assert.deepEqual(ta.events, ["paste", "input"]);
-  assert.deepEqual(ta.pasted, [file]);
-  assert.equal(ta.value, "the prompt");
+  assert.deepEqual(ta.sel, [13, 13]);
   assert.ok(ta.focused);
+  assert.equal(insertTag({ querySelector: () => null }, "(A)"), false);
+  assert.equal(insertTag(null, "(A)"), false);
 });
 
-test("insertInto: no picture - only the text, and it says so", () => {
-  fakeClipboard();
+test("two tags: both prompts go with the message, a tag deleted from the text does not", () => {
   const ta = new FakeTA("");
-  assert.deepEqual(insertInto(form(ta), { text: "t", file: null }), { file: false, text: true });
-  assert.deepEqual(ta.events, ["input"]);
+  const tags = tagsOf(ta, true);
+  tags.set("(One)", { slug: "1", prompt: "prompt one", video: "http://x/1.mp4" });
+  tags.set("(Two)", { slug: "2", prompt: "prompt two", preview: "http://x/2-p.mp4" });
+  tags.set("(Gone)", { slug: "3", prompt: "prompt gone" });
+  insertTag(form(ta), "(One)");
+  insertTag(form(ta), "(Two)");
+  assert.equal(ta.value, "(One) (Two) ");
+  assert.equal(attachRefs(ta), true);
+  for (const must of ["(One) (Two)", "prompt one", "http://x/1.mp4", "prompt two", "http://x/2-p.mp4"]) assert.ok(ta.value.includes(must), must);
+  assert.ok(!ta.value.includes("prompt gone"));
+  assert.equal(attachRefs(ta), true);                       // twice: still one block
+  assert.equal(ta.value.split("Refs from Motion Gallery").length, 2);
+  detachRefs(ta);
+  assert.equal(ta.value, "(One) (Two)");                    // not sent: the input is as the owner left it
+  assert.equal(attachRefs(new FakeTA("no tags here")), false);
 });
 
-test("insertInto: a browser that drops clipboardData - the text still goes in", () => {
-  fakeClipboard({ keepFiles: false });
-  const ta = new FakeTA("");
-  assert.deepEqual(insertInto(form(ta), { text: "t", file: { name: "a.jpg" } }), { file: false, text: true });
-  assert.equal(ta.value, "t");
-  assert.equal(pasteFile(ta, {}), false);
-});
-
-test("insertInto: no input in the form", () => {
-  assert.deepEqual(insertInto({ querySelector: () => null }, { text: "t" }), { file: false, text: false });
-  assert.deepEqual(insertInto(null, { text: "t" }), { file: false, text: false });
+test("interceptSend: Enter and submit add the refs before the page reads the input, Shift+Enter does not, an unsent text gets them back", async () => {
+  const handlers = {};
+  const doc = { addEventListener: (t, f) => { handlers[t] = f; }, removeEventListener() {} };
+  const off = interceptSend(doc);
+  const ta = new FakeTA("(One) hi");
+  tagsOf(ta, true).set("(One)", { slug: "1", prompt: "prompt one" });
+  handlers.keydown({ key: "Enter", shiftKey: true, target: ta });
+  assert.equal(ta.value, "(One) hi");
+  handlers.keydown({ key: "Enter", shiftKey: false, target: ta });
+  assert.ok(ta.value.includes("prompt one"));
+  await new Promise((r) => setTimeout(r, 20));              // the page did not clear the input: not sent
+  assert.equal(ta.value, "(One) hi");
+  handlers.submit({ target: { querySelector: () => ta } });
+  assert.ok(ta.value.includes("prompt one"));
+  ta.value = "";                                            // the page cleared it: sent, the block went with it
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(ta.value, "");
+  assert.equal(typeof off, "function");
 });
 
 test("openComposer: the last visible composer with a textarea", () => {

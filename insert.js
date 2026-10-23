@@ -1,36 +1,64 @@
-// Hub Motion Gallery: put a picture and a text into the input of a session chat, send nothing.
-// The page has no call for "set the draft of the open chat" (only for inputs a plugin builds itself), so this goes the way
-// the owner would: the picture is pasted into the textarea as a clipboard file (the page uploads it, marks it "[Image #N]",
-// shows the chip), then the text is appended to what is typed. Nothing is submitted: the owner edits and sends.
+// Hub Motion Gallery: put a tag into the input of a session chat at the cursor, send nothing; and, when the owner sends,
+// add what the tags stand for under the message.
+// The page's input is a plain <textarea> (there are no chips in the middle of a text), so a tag is the text "(Name)": it is
+// deleted like any text. The prompt, the video and the preview of every tag that is still in the text travel with the message:
+// they are added a moment before the page reads the input and taken back at once if the input was not cleared (not sent).
+import { REFS_MARK, insertAt, stripRefs, usedRefs, withRefs } from "./lib.js";
 
-// the picture arrives in the page's own paste handling; false - the browser can not make a synthetic paste
-export function pasteFile(ta, file) {
-  try {
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    const ev = new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true });
-    if (!ev.clipboardData || !ev.clipboardData.files.length) return false;   // a browser that drops clipboardData from the constructor
-    ta.dispatchEvent(ev);
-    return true;
-  } catch { return false; }
-}
-
-// the text after what is typed (a new line between); the page learns of it by the input event
-export function appendText(ta, text) {
-  if (!text) return;
-  ta.value = ta.value && !/\n$/.test(ta.value) ? ta.value + "\n" + text : ta.value + text;
-  ta.dispatchEvent(new Event("input", { bubbles: true }));
-  ta.setSelectionRange?.(ta.value.length, ta.value.length);
-}
-
-// {text, file?} -> {file: bool (the picture went in), text: bool}
-export function insertInto(form, { text = "", file = null } = {}) {
+// `text` at the cursor (the selection is replaced); the page learns of it by the input event. -> false when the form has no input
+export function insertTag(form, text) {
   const ta = form?.querySelector("textarea");
-  if (!ta) return { file: false, text: false };
-  const gotFile = file ? pasteFile(ta, file) : false;
-  appendText(ta, text);
+  if (!ta || !text) return false;
+  const r = insertAt(ta.value, ta.selectionStart, ta.selectionEnd, text);
+  ta.value = r.value;
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
+  ta.setSelectionRange?.(r.pos, r.pos);
   ta.focus();
-  return { file: gotFile, text: !!text };
+  return true;
+}
+
+// tags that belong to an input: WeakMap textarea -> Map tag -> {prompt, video, preview, slug}
+const registry = new WeakMap();
+export function tagsOf(ta, create = false) {
+  let m = registry.get(ta);
+  if (!m && create) registry.set(ta, (m = new Map()));
+  return m;
+}
+
+// the message is about to be read by the page: its refs go under the text. true - something was added
+export function attachRefs(ta) {
+  const tags = tagsOf(ta);
+  if (!tags?.size) return false;
+  const entries = usedRefs(stripRefs(ta.value), tags);
+  if (!entries.length) return false;
+  ta.value = withRefs(ta.value, entries);
+  return true;
+}
+
+// the message was not sent (the page kept the text): the refs come off the input again
+export function detachRefs(ta) {
+  const clean = stripRefs(ta.value);
+  if (clean !== ta.value) ta.value = clean;
+}
+
+// for any composer of the page: capture handlers before the page's own (Enter, the send button, a form submit).
+// Idempotent: attachRefs twice gives one block. Returns the function that takes the handlers off.
+export function interceptSend(doc = document) {
+  const forTextarea = (t) => (t && t.tagName === "TEXTAREA" ? t : null);
+  const prepare = (ta) => {
+    if (!ta || !attachRefs(ta)) return;
+    setTimeout(() => { if (ta.value.includes("\n\n")) detachRefs(ta); }, 0);   // sent: the page has emptied it already
+  };
+  const onKey = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) prepare(forTextarea(e.target)); };
+  const onSubmit = (e) => prepare(e.target?.querySelector?.("textarea"));
+  const onClick = (e) => {
+    const b = e.target?.closest?.("form button[type=submit], form .send");
+    if (b) prepare(b.closest("form").querySelector("textarea"));
+  };
+  doc.addEventListener("keydown", onKey, true);
+  doc.addEventListener("submit", onSubmit, true);
+  doc.addEventListener("click", onClick, true);
+  return () => { doc.removeEventListener("keydown", onKey, true); doc.removeEventListener("submit", onSubmit, true); doc.removeEventListener("click", onClick, true); };
 }
 
 // the input of the chat that is open now: the composer form with a textarea that is on the page; null while it is not there

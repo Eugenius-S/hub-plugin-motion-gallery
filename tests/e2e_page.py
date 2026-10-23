@@ -123,17 +123,16 @@ class Page(Sandbox):
             ("cat", {"eval": cards_visible()}),
             (None, {"click": "Kinetic type"}),
             ("srcchips", {"eval": "[...document.querySelectorAll('.mg-sources .mg-chip')].map(b => b.textContent)"}),
-            ("link", {"eval": "(() => { const a = document.querySelector('.mg-card .mg-link'); return a && [a.href, a.title]; })()"}),
+            ("nolink", {"eval": "[document.querySelectorAll('.mg-card .mg-link').length, document.querySelectorAll('.mg-card .mg-prompt').length]"}),
             (None, {"click": "remotion"}),
             ("src", {"eval": cards_visible()}),
             (None, {"click": "remotion"}),
             ("search", {"eval": "(() => { const s = document.querySelector('.mg-search'); s.value = 'prompt 3:'; s.dispatchEvent(new Event('input')); return [...document.querySelectorAll('.mg-card')].filter(c => !c.hidden).map(c => c.dataset.slug); })()"}),
             ("count", {"eval": "(() => { const s = document.querySelector('.mg-search'); s.value = ''; s.dispatchEvent(new Event('input')); return document.querySelector('.mg-count').textContent; })()"}),
-            # pick: goes to the chat opened last (a); the poster is a chip, the prompt is text, nothing is sent
+            # pick: goes to the chat opened last (a); a click puts a tag "(Name)" at the cursor, nothing is sent
             (None, {"eval": "document.querySelectorAll('.mg-card')[0].click(); 1"}),
-            (None, {"until": "location.hash === '#/s/a' && document.querySelector('form.composer textarea').value.length > 0", "ms": 10000}),
-            (None, {"until": "document.querySelectorAll('form.composer .pchip').length === 1", "ms": 8000}),
-            ("picked", {"eval": "[location.hash, document.querySelector('form.composer textarea').value, document.querySelectorAll('form.composer .pchip').length, document.querySelector('form.composer .pchip').textContent]"}),
+            (None, {"until": "location.hash === '#/s/a' && /^[(].+[)] $/.test(document.querySelector('form.composer textarea').value)", "ms": 10000}),
+            ("picked", {"eval": "[location.hash, document.querySelector('form.composer textarea').value]"}),
             (None, self.shot("composer.png", width=1300, height=900)),
             ("errors", {"errors": 1500}),
         ])
@@ -147,15 +146,14 @@ class Page(Sandbox):
         self.assertEqual(r["left"]["eval"], 0)                         # the mouse left: no video in the DOM
         self.assertEqual(r["cat"]["eval"], 2, r["cat"])
         self.assertEqual(len(r["srcchips"]["eval"]), 4, r["srcchips"])   # skillry, prompt-motion, claude-motion, remotion
-        self.assertTrue(r["link"]["eval"][0].startswith("https://example.com/"), r["link"])
+        self.assertEqual(r["nolink"]["eval"], [0, 0], "no source link and no prompt text on the card")
         self.assertEqual(r["src"]["eval"], 4, r["src"])                   # remotion: two of the four groups, 2 + 2 entries
         self.assertEqual(r["search"]["eval"], ["sample-3"], r["search"])
         self.assertRegex(r["count"]["eval"], r"^8 (of|из) 8$", r["count"])
-        hashed, text, chips, name = r["picked"]["eval"]
+        hashed, text = r["picked"]["eval"]
         self.assertEqual(hashed, "#/s/a")
-        self.assertIn("Sample prompt 1", text)
-        self.assertEqual(chips, 1)
-        self.assertIn("Image", name or "")   # the page names the chip itself: "[Image #1] · 13 KB"
+        self.assertRegex(text, r"^\(.+\) $", "a click puts a tag, not the prompt text: %r" % text)
+        self.assertNotIn("Sample prompt", text)
         self.assertFalse(r["errors"].get("errors"), r["errors"])
         self.assertEqual(self.sent(), [], "nothing is sent by itself")
 
@@ -173,10 +171,10 @@ class Page(Sandbox):
             # a mouse pick: the press must not take the focus (defaultPrevented), the click has detail 1 and returns it to the input
             ("md", {"eval": "(() => { const e = new MouseEvent('mousedown', { bubbles: true, cancelable: true }); document.querySelectorAll('.mg-panel .mg-card')[2].dispatchEvent(e); return e.defaultPrevented; })()"}),
             (None, {"eval": "document.querySelectorAll('.mg-panel .mg-card')[2].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })); 1"}),
-            (None, {"until": "document.querySelectorAll('form.composer .pchip').length === 1", "ms": 8000}),
+            (None, {"until": "document.querySelector('form.composer textarea').value.split('(').length === 2", "ms": 8000}),
             ("focus", {"eval": "document.activeElement && document.activeElement.tagName"}),
             (None, {"eval": "document.querySelectorAll('.mg-panel .mg-card')[4].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })); 1"}),
-            (None, {"until": "document.querySelectorAll('form.composer .pchip').length === 2", "ms": 8000}),
+            (None, {"until": "document.querySelector('form.composer textarea').value.split('(').length === 3", "ms": 8000}),
             ("after", {"eval": "[!!document.querySelector('.mg-panel'), document.querySelector('form.composer textarea').value, [...document.querySelectorAll('.mg-panel .mg-added')].filter(b => !b.hidden).length, " + GEOMETRY + "]"}),
             (None, self.shot("composer-overlay.png", width=1300, height=900)),
             # typing with the keyboard right after the picks, nothing clicked in the input: the focus is already there
@@ -208,10 +206,11 @@ class Page(Sandbox):
         self.assertEqual(r["layout"]["eval"]["backdrop"], 0, "no backdrop")
         stays, text, added, geo = r["after"]["eval"]
         self.assertTrue(stays, "the gallery stays open after a pick")
-        self.assertIn("Sample prompt 3", text)
-        self.assertIn("Sample prompt 5", text)
+        self.assertIn("(sample-3)", text)
+        self.assertIn("(sample-5)", text)
+        self.assertNotIn("Sample prompt", text, "tags only; the prompts travel under the message when it is sent")
         self.assertEqual(added, 2, "both cards carry a check mark")
-        self.assertGreaterEqual(geo["gap"], 0, "the input grew (chips) and the panel moved up with it: %s" % geo)
+        self.assertGreaterEqual(geo["gap"], 0, "the panel moved with the input and the panel moved up with it: %s" % geo)
         self.assertFalse(geo["covered"], geo)
         self.assertTrue(r["md"]["eval"], "a press on a card does not take the focus")
         self.assertEqual(r["focus"]["eval"], "TEXTAREA", "after a mouse pick the focus is in the input")
@@ -280,14 +279,14 @@ class Ghost(Sandbox):
             (None, {"eval": f"({card}).dispatchEvent(new MouseEvent('mouseleave')); document.querySelectorAll('.mg-card')[1].dispatchEvent(new MouseEvent('mouseenter')); 1"}),
             ("others", {"until": "document.querySelectorAll('.mg-card video').length === 1", "ms": 4000}),
             (None, {"eval": f"({card}).click(); 1"}),
-            ("picked", {"until": "document.querySelector('form.composer textarea').value.includes('not uploaded')", "ms": 8000}),
+            ("picked", {"until": "document.querySelector('form.composer textarea').value.length > 2", "ms": 8000}),
             ("jserr", {"eval": "window.__mg"}),
         ])
         self.assertTrue(r["cards"]["until"], r["cards"])
         self.assertTrue(r["marked"]["until"], f"the failed preview marks the card, it is not asked again: {r['dbg']}")
         self.assertEqual(r["state"]["eval"][:2], [0, 0], "no video is left on the page and nothing plays")
         self.assertTrue(r["others"]["until"], "other cards keep their previews")
-        self.assertTrue(r["picked"]["until"], "the card still picks its prompt")
+        self.assertTrue(r["picked"]["until"], "the card still puts its tag")
         self.assertEqual(r["jserr"]["eval"], [], "a missing preview file is not an error of the page")
         self.assertEqual(self.sent(), [])
 
@@ -353,7 +352,7 @@ class Real(Sandbox):
             ("video", {"eval": f"(() => {{ const c = {pick}; return [document.querySelectorAll('video').length, c.dataset.nopreview || '', document.querySelectorAll('.mg-card.playing').length]; }})()"}),
             (None, {"eval": f"{pick}.dispatchEvent(new MouseEvent('mouseleave')); 1"}),
             (None, {"eval": "document.querySelectorAll('.mg-card')[0].click(); 1"}),
-            (None, {"until": "document.querySelector('form.composer textarea').value.length > 0 && document.querySelectorAll('form.composer .pchip').length === 1", "ms": 20000}),
+            (None, {"until": "document.querySelector('form.composer textarea').value.length > 0", "ms": 20000}),
             ("picked", {"eval": "document.querySelector('form.composer textarea').value.length"}),
             ("jserr", {"eval": "window.__mg"}),
         ]))
@@ -368,7 +367,7 @@ class Real(Sandbox):
             self.assertEqual((n, playing), (0, 0), "a preview that is not uploaded yet leaves a calm poster card, no video left")
         else:
             self.assertEqual((n, nopreview), (1, ""), "every preview is in the cloud: the hovered card plays")
-        self.assertGreater(r["picked"]["eval"], 20)
+        self.assertGreater(r["picked"]["eval"], 2)
         self.assertEqual(r["jserr"]["eval"], [], "the page threw nothing")
         self.assertEqual(self.sent(), [])
 
@@ -428,8 +427,8 @@ class Icon(Sandbox):
 
 @unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
 class Lightbox(Sandbox):
-    """The plus in the corner of a card: the example full screen (video with sound and controls, caption, arrows, Escape, cross)."""
-    def test_plus_opens_the_lightbox_over_the_gallery_over_a_chat(self):
+    """The magnifier in the corner of a card: the example full screen (video with sound and controls, caption, arrows, Escape, cross)."""
+    def test_magnifier_opens_the_lightbox_over_the_gallery_over_a_chat(self):
         card = "'.mg-panel .mg-card'"
         r = self.run_steps([
             (None, {"go": self.url + "#/s/b", "init": COLLECT}),
@@ -438,16 +437,16 @@ class Lightbox(Sandbox):
             (None, {"until": "document.querySelectorAll('.mg-panel .mg-card').length >= 8", "ms": 10000}),
             (None, {"sleep": 800}),
             ("rest", {"eval": "getComputedStyle(document.querySelector('.mg-panel .mg-card .mg-zoom')).opacity"}),
-            # a held mouse over the card keeps :hover: the plus shows in the top right corner
+            # a held mouse over the card keeps :hover: the magnifier shows in the top left corner
             (None, {"drag": ".mg-panel .mg-card", "to": ".mg-panel .mg-card", "keep": True}),
             (None, {"sleep": 500}),
             ("hover", {"eval": "(() => { const z = document.querySelector('.mg-panel .mg-card .mg-zoom'), m = z.closest('.mg-media').getBoundingClientRect(), r = z.getBoundingClientRect();"
-                               " return [getComputedStyle(z).opacity, Math.round(m.right - r.right), Math.round(r.top - m.top), document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === z || z.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))]; })()"}),
-            (None, self.shot("card-plus.png")),
+                               " return [getComputedStyle(z).opacity, Math.round(r.left - m.left), Math.round(r.top - m.top), document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === z || z.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))]; })()"}),
+            (None, self.shot("card-magnifier.png")),
             (None, {"eval": "document.querySelector('.mg-panel .mg-card .mg-zoom').click(); 1"}),
             ("open", {"until": "!!document.querySelector('.mg-lb video')", "ms": 4000}),
             (None, {"sleep": 1200}),
-            ("state", {"eval": "(() => { const v = document.querySelector('.mg-lb video'); return [v.controls, v.muted, !!v.src, document.querySelectorAll('form.composer .pchip').length, !!document.querySelector('.mg-panel'),"
+            ("state", {"eval": "(() => { const v = document.querySelector('.mg-lb video'); return [v.controls, v.muted, !!v.src, document.querySelector('form.composer textarea').value.length, !!document.querySelector('.mg-panel'),"
                                " document.querySelector('.mg-lb-count').textContent, document.querySelector('.mg-lb').getAttribute('role'), document.querySelector('.mg-lb-prev').disabled, document.querySelector('.mg-lb-next').disabled]; })()"}),
             (None, self.shot("lightbox.png", width=1300, height=900)),
             (None, {"key": "ArrowRight"}),
@@ -459,7 +458,7 @@ class Lightbox(Sandbox):
             ("panel", {"eval": "[!!document.querySelector('.mg-panel'), document.querySelectorAll('video').length]"}),
             # the card itself still puts the example into the chat
             (None, {"eval": "document.querySelectorAll('.mg-panel .mg-card')[1].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })); 1"}),
-            (None, {"until": "document.querySelectorAll('form.composer .pchip').length === 1", "ms": 8000}),
+            (None, {"until": "document.querySelector('form.composer textarea').value.length > 0", "ms": 8000}),
             # the cross closes it; a filter narrows the list the arrows walk through
             (None, {"eval": "const s = document.querySelector('.mg-panel .mg-search'); s.value = 'prompt 3:'; s.dispatchEvent(new Event('input')); 1"}),
             (None, {"eval": "[...document.querySelectorAll('.mg-panel .mg-card')].find(c => !c.hidden).querySelector('.mg-zoom').click(); 1"}),
@@ -469,14 +468,14 @@ class Lightbox(Sandbox):
             ("x", {"until": "!document.querySelector('.mg-lb')", "ms": 3000}),
             ("jserr", {"eval": "window.__mg"}),
         ])
-        self.assertEqual(r["rest"]["eval"], "0", "the plus shows only on hover")
-        op, right, top, on_top = r["hover"]["eval"]
-        self.assertEqual((op, right, top), ("1", 8, 8), "the plus is in the top right corner of the card")
+        self.assertEqual(r["rest"]["eval"], "0", "the magnifier shows only on hover")
+        op, left, top, on_top = r["hover"]["eval"]
+        self.assertEqual((op, left, top), ("1", 8, 8), "the magnifier is in the top left corner of the card")
         self.assertTrue(on_top, "and the playing preview does not cover it")
         self.assertTrue(r["open"]["until"], r["open"])
         controls, muted, has_src, chips, panel, count, role, prev_off, next_off = r["state"]["eval"]
         self.assertTrue(controls and has_src and not muted, "the video has controls, a source and sound: %s" % r["state"])
-        self.assertEqual((chips, panel), (0, True), "the plus does not put anything into the chat")
+        self.assertEqual((chips, panel), (0, True), "the magnifier does not put anything into the chat")
         self.assertRegex(count, r"^1 (of|из) 8$")
         self.assertEqual((role, prev_off, next_off), ("dialog", True, False))
         self.assertEqual(r["right"]["eval"][1:], [1, False], "one video at a time, the back arrow is alive: %s" % r["right"])

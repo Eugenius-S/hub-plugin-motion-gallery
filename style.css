@@ -29,21 +29,21 @@
 .mg-video { opacity: 0; transition: opacity .2s; background: transparent; }
 .mg-card.playing .mg-video { opacity: 1; }
 .mg-dur { position: absolute; right: 8px; bottom: 8px; padding: 1px 7px; border-radius: 999px; background: rgba(0, 0, 0, .62); color: #fff; font-size: 11px; font-variant-numeric: tabular-nums; pointer-events: none; }
-.mg-link { position: absolute; left: 8px; top: 8px; width: 28px; height: 28px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; display: grid; place-items: center; text-decoration: none; opacity: 0; transition: opacity .15s; }
-.mg-card:hover .mg-link, .mg-card:focus-within .mg-link { opacity: 1; }
-/* the plus in the corner: the example full screen (a click on the card itself still puts it into the chat) */
-.mg-zoom { position: absolute; right: 8px; top: 8px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; display: grid; place-items: center; cursor: zoom-in; opacity: 0; transition: opacity .15s, background .15s; }
-.mg-card:hover .mg-zoom, .mg-card:focus-within .mg-zoom, .mg-zoom:focus-visible { opacity: 1; }
-.mg-zoom:hover { background: rgba(0, 0, 0, .8); }
-.mg-zoom:focus-visible, .mg-lb-btn:focus-visible, .mg-lb-link:focus-visible, .mg-lb-video:focus-visible, .mg-lb:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.mg-zoom .mg-ico { width: 18px; height: 18px; }
-@media (hover: none) { .mg-zoom, .mg-link { opacity: 1; } }
+/* the magnifier in the top left corner: the example full screen (a click on the card itself still puts its tag into the chat);
+   the cross in the top right corner takes the example out of the gallery (only when deleting is on) */
+.mg-zoom, .mg-del { position: absolute; top: 8px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; display: grid; place-items: center; opacity: 0; transition: opacity .15s, background .15s; }
+.mg-zoom { left: 8px; cursor: zoom-in; }
+.mg-del { right: 8px; cursor: pointer; }
+.mg-card:hover .mg-zoom, .mg-card:focus-within .mg-zoom, .mg-zoom:focus-visible, .mg-card:hover .mg-del, .mg-card:focus-within .mg-del, .mg-del:focus-visible { opacity: 1; }
+.mg-zoom:hover, .mg-del:hover { background: rgba(0, 0, 0, .8); }
+.mg-zoom:focus-visible, .mg-del:focus-visible, .mg-lb-btn:focus-visible, .mg-lb-link:focus-visible, .mg-lb-video:focus-visible, .mg-lb:focus-visible, .mg-lb-sum:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.mg-zoom .mg-ico, .mg-del .mg-ico { width: 18px; height: 18px; }
+@media (hover: none) { .mg-zoom, .mg-del { opacity: 1; } }
 .mg-cap { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .mg-meta { font-size: 12px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mg-prompt { font-size: 13px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* the buttons over a playing preview: the video is added on hover, after them, and would paint over them */
-.mg-zoom, .mg-link, .mg-dur, .mg-added { z-index: 1; }
+.mg-zoom, .mg-del, .mg-dur, .mg-added { z-index: 1; }
 
 /* the gallery over the chat (the button in a chat input): docked right above the input, which stays free; no backdrop */
 .mg-panel { position: fixed; z-index: 900; display: flex; flex-direction: column; min-height: 0; background: var(--background); border: 1px solid var(--border); border-radius: calc(var(--radius) * 1.5); box-shadow: var(--shadow-plate, 0 12px 40px rgba(0, 0, 0, .25)); }
@@ -59,11 +59,13 @@
 .mg-ico-refresh { -webkit-mask-image: url("icons/refresh.svg"); mask-image: url("icons/refresh.svg"); }
 .mg-ico-open { width: 16px; height: 16px; -webkit-mask-image: url("icons/open.svg"); mask-image: url("icons/open.svg"); }
 .mg-ico-plus { -webkit-mask-image: url("icons/plus.svg"); mask-image: url("icons/plus.svg"); }
+.mg-ico-zoom { -webkit-mask-image: url("icons/zoom.svg"); mask-image: url("icons/zoom.svg"); }
+.mg-ico-trash { -webkit-mask-image: url("icons/trash.svg"); mask-image: url("icons/trash.svg"); }
 .mg-ico-close { -webkit-mask-image: url("icons/close.svg"); mask-image: url("icons/close.svg"); }
 .mg-ico-chevron { -webkit-mask-image: url("icons/chevron.svg"); mask-image: url("icons/chevron.svg"); }
 .mg-ico-check { -webkit-mask-image: url("icons/check.svg"); mask-image: url("icons/check.svg"); }
 .mg-btn { display: grid; place-items: center; padding: 0; }
-.mg-added { position: absolute; right: 42px; top: 8px; width: 28px; height: 28px; border-radius: 999px; background: var(--primary); color: var(--primary-foreground, #fff); display: grid; place-items: center; pointer-events: none; }
+.mg-added { position: absolute; left: 42px; top: 8px; width: 28px; height: 28px; border-radius: 999px; background: var(--primary); color: var(--primary-foreground, #fff); display: grid; place-items: center; pointer-events: none; }
 .mg-added[hidden] { display: none; }
 .mg-added .mg-ico { width: 18px; height: 18px; }
 .mg-title { font-size: 13px; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -73,17 +75,21 @@
 .mg-lb-stage { position: relative; flex: 0 1 auto; min-height: 0; max-width: 100%; display: flex; align-items: center; justify-content: center; }
 .mg-lb-video { display: block; max-width: min(100%, 1400px); max-height: calc(100vh - 230px); min-width: min(320px, 100%); background: #000; border-radius: var(--radius); }
 .mg-run { display: block; flex: none; object-fit: contain; pointer-events: none; user-select: none; }
-.mg-lb .mg-run { position: absolute; left: 50%; top: 50%; margin: -10px 0 0 -10px; filter: invert(1); }
 .mg-note .mg-run { margin: 0 auto 8px; }
 .mg-dark .mg-run { filter: invert(1); }
-.mg-media .mg-run { position: absolute; left: 50%; top: 50%; margin: -10px 0 0 -10px; }
+/* over a video or a poster: white runner in a round black plate (the plate is a separate element: the invert must not paint it) */
+.mg-disc { position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: rgba(0, 0, 0, .8); display: grid; place-items: center; pointer-events: none; z-index: 1; }
+.mg-disc .mg-run { filter: invert(1); }
 .mg-lb-err { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 8px 14px; border-radius: var(--radius); background: rgba(0, 0, 0, .7); font-size: 13px; text-align: center; pointer-events: none; }
 .mg-lb-err[hidden], .mg-lb [hidden] { display: none; }
 .mg-lb-cap { flex: 0 0 auto; width: min(100%, 860px); display: flex; flex-direction: column; gap: 4px; text-align: left; }
 .mg-lb-count { font-size: 12px; opacity: .6; font-variant-numeric: tabular-nums; }
 .mg-lb-title { font-size: 16px; font-weight: 600; line-height: 1.3; }
 .mg-lb-meta { font-size: 13px; opacity: .75; }
-.mg-lb-text { font-size: 13px; line-height: 1.45; opacity: .9; max-height: 5.8em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mg-lb-prompt { font-size: 13px; }
+.mg-lb-sum { width: fit-content; cursor: pointer; opacity: .75; user-select: none; }
+.mg-lb-sum:hover, .mg-lb-prompt[open] .mg-lb-sum { opacity: 1; }
+.mg-lb-text { margin-top: 6px; line-height: 1.45; opacity: .9; max-height: 9em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mg-lb-link { font-size: 13px; color: #fff; opacity: .75; width: fit-content; }
 .mg-lb-link:hover { opacity: 1; }
 .mg-lb-btn { position: absolute; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .14); color: #fff; cursor: pointer; transition: background .15s, opacity .15s; }
@@ -91,11 +97,19 @@
 .mg-lb-btn:disabled { opacity: .3; cursor: default; }
 .mg-lb-btn .mg-ico { width: 24px; height: 24px; }
 .mg-lb-x { right: 16px; top: 16px; }
+.mg-lb-del { right: 68px; top: 16px; }
 .mg-lb-nav { top: 50%; margin-top: -22px; }
 .mg-lb-prev { left: 16px; }
 .mg-lb-next { right: 16px; }
 .mg-lb-next .mg-ico { transform: scaleX(-1); }
 @media (max-width: 640px) { .mg-lb { padding: 56px 12px 16px; } .mg-lb-nav { top: auto; bottom: 16px; margin-top: 0; } }
+
+/* "Deleted · Undo" plates: stacked at the bottom while the example waits for its real deletion */
+.mg-undos { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 9100; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+.mg-undo { pointer-events: auto; display: flex; align-items: center; gap: 12px; max-width: min(520px, 90vw); padding: 8px 8px 8px 16px; border-radius: var(--radius); background: var(--foreground); color: var(--background); font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
+.mg-undo-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-undo-btn { height: 28px; padding: 0 12px; border: 0; border-radius: calc(var(--radius) * .75); background: var(--background); color: var(--foreground); font: inherit; font-weight: 600; cursor: pointer; }
+.mg-undo-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 .mg-toast { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); z-index: 9100; max-width: min(520px, 90vw); padding: 10px 16px; border-radius: var(--radius); background: var(--foreground); color: var(--background); font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 
@@ -104,4 +118,4 @@
 .mg-open .mg-oi { display: block; width: 22px; height: 22px; background: currentColor;
   -webkit-mask: url("icon.svg") center / contain no-repeat; mask: url("icon.svg") center / contain no-repeat; }
 
-@media (prefers-reduced-motion: reduce) { .mg-card, .mg-video, .mg-link, .mg-zoom, .mg-lb-btn { transition: none; } .mg-card:hover { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .mg-card, .mg-video, .mg-del, .mg-zoom, .mg-lb-btn { transition: none; } .mg-card:hover { transform: none; } }

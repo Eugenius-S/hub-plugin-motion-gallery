@@ -1,15 +1,16 @@
-// Hub Motion Gallery: a grid of motion examples with hover previews. A click puts the example into a chat input: the poster
-// as a picture and the full prompt as text; nothing is sent - the owner edits it and sends it. Two ways in: the view in the
+// Hub Motion Gallery: a grid of motion examples with hover previews. A click puts a tag "(Name)" of the example into a chat
+// input at the cursor; nothing is sent - the owner edits it and sends it, and the prompt of every tag still in the text and the
+// links to its video and preview travel with the message (insert.js). Two ways in: the view in the
 // menu (inserts into the last opened chat, or the one chosen at the top) and a button in the input of any chat (the gallery
 // opens over the page and inserts into that chat). Files are served by the plugin process (server.py).
 import { createGallery } from "./gallery.js";
 import { makeT, setLangSource } from "./i18n.js";
-import { insertInto, waitComposer } from "./insert.js";
-import { chatText, posterName, processPort, sessionOf, targets } from "./lib.js";
+import { insertTag, interceptSend, tagsOf, waitComposer } from "./insert.js";
+import { chatText, linksOf, mediaUrl, processPort, sessionOf, tagFor, targets } from "./lib.js";
 
 const STR = {
   en: {
-    subtitle: "motion examples: hover to play, click to put into a chat",
+    subtitle: "motion examples: hover to play, click to add a tag to a chat",
     title: "Motion Gallery",
     open_in: "Motion examples: put into this chat",
     search: "Search prompts, authors, tags…",
@@ -25,7 +26,8 @@ const STR = {
     no_match: "Nothing matches the search.",
     offline: "The plugin process is not responding. Restart the plugin: hub restart ext:<account>:motion-gallery",
     local_only: "Motion Gallery works only on this computer: open the hub via localhost.",
-    no_poster: "The poster did not load: only the prompt was put in.",
+    prompt: "Prompt",
+    delete: "Delete from the gallery",
     no_chat: "The chat input did not open: choose a chat and try again.",
     close: "Close",
     expand: "View full screen",
@@ -35,7 +37,7 @@ const STR = {
     video_failed: "The video did not load.",
   },
   ru: {
-    subtitle: "примеры движения: наведи, и играет; клик кладёт в чат",
+    subtitle: "примеры движения: наведи, и играет; клик ставит тег в чат",
     title: "Галерея движения",
     open_in: "Примеры движения: вставить в этот чат",
     search: "Поиск по промтам, авторам, тегам…",
@@ -51,7 +53,8 @@ const STR = {
     no_match: "По запросу ничего не найдено.",
     offline: "Процесс плагина не отвечает. Перезапустите плагин: hub restart ext:<аккаунт>:motion-gallery",
     local_only: "Галерея движения работает только на этом компьютере: откройте хаб через localhost.",
-    no_poster: "Постер не загрузился: вставлен только промт.",
+    prompt: "Промт",
+    delete: "Удалить из галереи",
     no_chat: "Поле ввода чата не открылось: выберите чат и повторите.",
     close: "Закрыть",
     expand: "Открыть на весь экран",
@@ -89,25 +92,18 @@ function toast(text) {
   toastTimer = setTimeout(() => t.remove(), 5000);
 }
 
-// the poster of an example as a File (the process serves it, a remote poster too); null - did not load
-async function posterFile(item) {
-  try {
-    const r = await fetch(`${base()}/poster/${encodeURIComponent(item.slug)}`);
-    if (!r.ok) return null;
-    const b = await r.blob();
-    if (!b.size || !b.type.startsWith("image/")) return null;
-    return new File([b], posterName(item, b.type), { type: b.type });
-  } catch { return null; }
-}
-
-// the example goes into the input `form` (a promise of the form: the chat may still be opening); the poster loads meanwhile.
-// true - it went in
+// the tag of the example goes into the input `form` (a promise of the form: the chat may still be opening) at the cursor;
+// what the tag stands for is kept with the input and added under the message when it is sent. true - it went in
 async function putIn(formPromise, item) {
-  const [form, file] = await Promise.all([formPromise, posterFile(item)]);
-  if (!form || !form.isConnected) { toast(tr("no_chat")); return false; }
-  const res = insertInto(form, { text: chatText(item), file });
-  if (!res.file) toast(tr("no_poster"));
-  return true;
+  const form = await formPromise;
+  const ta = form?.isConnected ? form.querySelector("textarea") : null;
+  if (!ta) { toast(tr("no_chat")); return false; }
+  const tags = tagsOf(ta, true);
+  for (const tag of [...tags.keys()]) if (!ta.value.includes(tag)) tags.delete(tag);   // deleted from the text: forgotten
+  const tag = tagFor(item, new Map([...tags].map(([t, r]) => [t, r.slug])));
+  const url = (src) => mediaUrl(base(), src);
+  tags.set(tag, { slug: item.slug, prompt: chatText(item), video: url(item.video), preview: url(item.preview), source: linksOf(item)[0]?.url || "" });
+  return insertTag(form, tag);
 }
 
 // inserts go one after another: quick clicks on several cards keep their order (the poster of each loads on its own time)
@@ -209,6 +205,7 @@ export default function register(h) {
   hub = h;
   setLangSource(() => hub.lang);   // read on every use, never at load
   hub.addStyle("style.css");
+  interceptSend();
   hub.addStyle("navicon.css");   // the icon turns filled with a gradient on hover (the menu and the input button)
   remember(location.hash);
   addEventListener("hashchange", () => remember(location.hash));

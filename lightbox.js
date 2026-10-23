@@ -3,13 +3,15 @@
 // It sits above the page and above the gallery overlay; while it is open it takes the keys (capture phase on window), so
 // Escape closes only the lightbox and the gallery over a chat stays.
 import { linksOf, lightVideo, mediaUrl, metaLine, stepIndex } from "./lib.js";
-import { runner } from "./loader.js";
+import { runnerDisc } from "./loader.js";
 
 let current = null;
 
-// props: el (hub.el), tr, base() -> process address, items (the list to step through), index, onClose?
+// props: el (hub.el), tr, base() -> process address, items (the list to step through), index, onClose?,
+//        onDelete(item)? - the example is taken out of the gallery (with the undo plate, see main.js): the lightbox drops it
+//        from its list and shows the next one (the previous one at the end, closes when none is left)
 // returns { box, close }; a new one closes the one that is open
-export function openLightbox({ el, tr, base, items, index, onClose }) {
+export function openLightbox({ el, tr, base, items, index, onClose, onDelete = null }) {
   current?.close();
   const list = items.slice();
   if (!list.length) return null;
@@ -40,16 +42,21 @@ export function openLightbox({ el, tr, base, items, index, onClose }) {
   const count = el("div", "mg-lb-count");
   const title = el("div", "mg-lb-title");
   const meta = el("div", "mg-lb-meta");
+  // the prompt: a block that opens on demand (the caption stays short), the text inside scrolls
+  const prompt = el("details", "mg-lb-prompt");
+  const promptHead = el("summary", "mg-lb-sum", tr("prompt"));
   const text = el("div", "mg-lb-text");
+  prompt.append(promptHead, text);
   const link = el("a", "mg-lb-link");
   link.target = "_blank";
   link.rel = "noopener noreferrer";
-  cap.append(count, title, meta, text, link);
-  box.append(stage, cap, prev, next, x);
+  cap.append(count, title, meta, prompt, link);
+  const del = onDelete ? button("mg-lb-btn mg-lb-del", "trash", tr("delete")) : null;
+  box.append(stage, cap, prev, next, ...(del ? [del] : []), x);
   let video = null;
 
   function release() {
-    stage.querySelector(".mg-run")?.remove();
+    stage.querySelector(".mg-disc")?.remove();
     if (!video) return;
     video.pause();
     video.removeAttribute("src");
@@ -72,11 +79,11 @@ export function openLightbox({ el, tr, base, items, index, onClose }) {
     video.poster = mediaUrl(base(), item.poster);
     video.setAttribute("aria-label", item.title || item.slug);
     const v = video;
-    const unwait = () => stage.querySelector(".mg-run")?.remove();
+    const unwait = () => stage.querySelector(".mg-disc")?.remove();
     v.addEventListener("loadeddata", unwait);
     v.addEventListener("error", () => { unwait(); if (video === v) { err.textContent = tr("video_failed"); err.hidden = false; } });
     stage.prepend(video);
-    if (src) { stage.append(runner(el)); v.src = src; v.play().catch(() => {}); }   // the click that opened it allows sound
+    if (src) { stage.append(runnerDisc(el)); v.src = src; v.play().catch(() => {}); }   // the click that opened it allows sound
     else { err.textContent = tr("no_video"); err.hidden = false; }
     box.setAttribute("aria-label", [item.title, metaLine(item)].filter(Boolean).join(" · ") || item.slug);
     count.textContent = tr("count", { n: at + 1, total: list.length });
@@ -86,7 +93,8 @@ export function openLightbox({ el, tr, base, items, index, onClose }) {
     meta.hidden = !meta.textContent;
     const body = item.prompt || item.skill?.desc || "";
     text.textContent = body;
-    text.hidden = !body;
+    prompt.hidden = !body;
+    prompt.open = false;
     const links = linksOf(item);
     link.hidden = !links.length;
     if (links.length) {
@@ -99,6 +107,16 @@ export function openLightbox({ el, tr, base, items, index, onClose }) {
 
   const go = (d) => { const i = stepIndex(at, d, list.length); if (i !== at) show(i); };
 
+  // the cross-out: the owner's handler hides the card and starts the undo; here the entry leaves the list at once
+  function remove() {
+    if (!onDelete) return;
+    const item = list[at];
+    list.splice(at, 1);
+    onDelete(item);
+    if (!list.length) return close();
+    show(Math.min(at, list.length - 1));
+  }
+
   function onKey(e) {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return close(); }
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
@@ -106,9 +124,9 @@ export function openLightbox({ el, tr, base, items, index, onClose }) {
       e.stopPropagation();
       return go(e.key === "ArrowLeft" ? -1 : 1);
     }
-    if (e.key === " " && !e.target.closest?.("button, video, a")) { e.preventDefault(); if (video) (video.paused ? video.play().catch(() => {}) : video.pause()); return; }
+    if (e.key === " " && !e.target.closest?.("button, video, a, summary")) { e.preventDefault(); if (video) (video.paused ? video.play().catch(() => {}) : video.pause()); return; }
     if (e.key === "Tab") {   // the focus stays inside: the buttons, the video controls, the link
-      const ring = [x, prev, next, video, link].filter((n) => n && !n.hidden && !n.disabled);
+      const ring = [x, del, prev, next, video, promptHead, link].filter((n) => n && !n.hidden && !n.disabled);
       if (!ring.length) return e.preventDefault();
       const i = ring.indexOf(document.activeElement);
       e.preventDefault();
@@ -128,6 +146,7 @@ export function openLightbox({ el, tr, base, items, index, onClose }) {
   }
 
   x.addEventListener("click", close);
+  del?.addEventListener("click", remove);
   prev.addEventListener("click", () => go(-1));
   next.addEventListener("click", () => go(1));
   box.addEventListener("click", (e) => { if (e.target === box || e.target === stage) close(); });   // a click beside the picture
