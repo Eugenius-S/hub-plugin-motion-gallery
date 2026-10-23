@@ -18,6 +18,20 @@ export function categories(items) {
   return [...m].map(([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
 }
 
+// sources (where the example comes from) with counts, the biggest first
+export function sourceList(items) {
+  const m = new Map();
+  for (const i of items) for (const s of i.sources || []) m.set(s, (m.get(s) || 0) + 1);
+  return [...m].map(([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+}
+
+// links to the originals: [{source, url}] (an older entry has only post or page)
+const isUrl = (u) => /^https?:\/\//i.test(u || "");
+export function linksOf(item) {
+  const l = (item?.links || []).filter((x) => x && isUrl(x.url));
+  return l.length ? l : [item?.post, item?.page].filter(isUrl).map((url) => ({ source: "", url }));
+}
+
 // tags with counts, the most used first, at most `limit`
 export function tagList(items, limit = 24) {
   const m = new Map();
@@ -25,13 +39,14 @@ export function tagList(items, limit = 24) {
   return [...m].map(([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, limit);
 }
 
-// the entry matches the query (every word, in the prompt, slug, author, category or tags), the category and ALL chosen tags
-export function matches(item, { q = "", category = "", tags = [] } = {}) {
+// the entry matches the query (every word, in the prompt, slug, author, category, tags or sources), the category, the source and ALL chosen tags
+export function matches(item, { q = "", category = "", tags = [], source = "" } = {}) {
   if (category && item.category !== category) return false;
+  if (source && !(item.sources || []).includes(source)) return false;
   if (tags.length && !tags.every((t) => (item.tags || []).includes(t))) return false;
   const words = norm(q).split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const hay = norm([item.prompt, item.slug, item.author, item.category, (item.tags || []).join(" ")].join("\n"));
+  const hay = norm([item.prompt, item.slug, item.author, item.category, (item.tags || []).join(" "), (item.sources || []).join(" ")].join("\n"));
   return words.every((w) => hay.includes(w));
 }
 

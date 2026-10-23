@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -72,10 +73,117 @@ class Normalise(unittest.TestCase):
         self.assertEqual(server.normalise(self.root, [{"slug": "a b/../c", "poster": "posters/a.jpg"}])[0]["slug"], "a-b-..-c")
 
 
+class Base(unittest.TestCase):
+    """A web base for the files that are not in the folder (the shared cloud folder of a team)."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = os.path.realpath(self.tmp.name)
+        make_gallery(self.root, [])
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_relative_paths_go_to_the_base_unless_the_file_is_in_the_folder(self):
+        rows = [{"slug": "a", "poster": "posters/a.jpg", "preview": "previews/a b.mp4"},
+                {"slug": "far", "poster": "posters/far.jpg", "preview": "/previews/far.mp4", "video": "videos/far.mp4"}]
+        i, f = server.normalise(self.root, rows, "https://cloud.test/dav/x")
+        self.assertEqual((i["poster"], i["preview"]), ("/f/posters/a.jpg", "https://cloud.test/dav/x/previews/a%20b.mp4"))
+        self.assertEqual((f["poster"], f["preview"]), ("https://cloud.test/dav/x/posters/far.jpg", "https://cloud.test/dav/x/previews/far.mp4"))
+        self.assertEqual([x["slug"] for x in server.normalise(self.root, rows)], ["a"])   # no base: a missing file is no picture
+
+    def test_the_preview_falls_back_to_the_video_and_the_base_cannot_be_escaped(self):
+        rows = [{"slug": "v", "video": "videos/v.mp4", "poster": "../x.jpg"}]
+        (v,) = server.normalise(None, rows, "https://cloud.test/b")
+        self.assertEqual((v["preview"], v["poster"]), ("https://cloud.test/b/videos/v.mp4", ""))
+
+    def test_sources_and_links(self):
+        rows = [{"slug": "a", "poster": "posters/a.jpg", "sources": ["skillry", "remotion"],
+                 "pages": {"skillry": "https://s.test/p/1", "bad": "javascript:x"}, "post": "https://s.test/p/1"},
+                {"slug": "b", "poster": "posters/a.jpg", "source": "claude-motion, prompt-motion", "page": "https://c.test/b"},
+                {"slug": "c", "poster": "posters/a.jpg", "pages": {"remotion": "https://r.test/c"}}]
+        a, b, c = server.normalise(self.root, rows)
+        self.assertEqual(a["sources"], ["skillry", "remotion"])
+        self.assertEqual(a["links"], [{"source": "skillry", "url": "https://s.test/p/1"}])   # post is the same address: once
+        self.assertEqual(b["sources"], ["claude-motion", "prompt-motion"])
+        self.assertEqual(b["links"], [{"source": "", "url": "https://c.test/b"}])
+        self.assertEqual(c["sources"], ["remotion"])                                         # taken from the pages when not named
+
+    def test_media_base_setting_only_http_and_no_trailing_slash(self):
+        keep = os.environ.get("MOTION_GALLERY_BASE")
+        try:
+            os.environ["MOTION_GALLERY_BASE"] = "https://cloud.test/dav/x/"
+            self.assertEqual(server.media_base(), "https://cloud.test/dav/x")
+            os.environ["MOTION_GALLERY_BASE"] = "file:///etc"
+            self.assertEqual(server.media_base(), "")
+        finally:
+            os.environ.pop("MOTION_GALLERY_BASE", None)
+            if keep is not None:
+                os.environ["MOTION_GALLERY_BASE"] = keep
+
+    def test_a_base_without_a_folder_reads_gallery_json_from_the_base(self):
+        keep = {k: os.environ.pop(k, None) for k in ("MOTION_GALLERY_DIR", "MOTION_GALLERY_BASE", "HUB_CONFIG")}
+        seen = []
+        orig = server.fetch_url
+        server.fetch_url = lambda url, limit: (seen.append(url), (json.dumps({"items": [{"slug": "w", "poster": "posters/w.jpg"}]}).encode(), "application/json"))[1]
+        server._cache.update(sig=None, data=None)
+        server._web.update(url=None, time=0, raw=None)
+        os.environ["MOTION_GALLERY_BASE"] = "https://cloud.test/dav/x"
+        try:
+            d = server.load()
+            self.assertEqual((d["configured"], d["ready"], [i["poster"] for i in d["items"]]), (True, True, ["https://cloud.test/dav/x/posters/w.jpg"]))
+            server.load()
+            self.assertEqual(seen, ["https://cloud.test/dav/x/gallery.json"])   # kept for a while
+            server.fetch_url = lambda url, limit: None
+            server._web["time"] = 0
+            self.assertTrue(server.load()["ready"], "the last good copy is shown when the cloud does not answer")
+        finally:
+            server.fetch_url = orig
+            os.environ.pop("MOTION_GALLERY_BASE", None)
+            for k, v in keep.items():
+                if v is not None:
+                    os.environ[k] = v
+            server._cache.update(sig=None, data=None)
+            server._web.update(url=None, time=0, raw=None, failed=0)
+
+    def test_a_dead_base_is_not_asked_again_at_once(self):
+        calls = []
+        orig = server.fetch_url
+        server.fetch_url = lambda url, limit: calls.append(url)   # None: the cloud does not answer
+        server._web.update(url=None, time=0, raw=None, failed=0)
+        try:
+            self.assertIsNone(server.web_gallery("https://dead.test/x"))
+            self.assertIsNone(server.web_gallery("https://dead.test/x"))
+            self.assertEqual(len(calls), 1, "the second request must not wait for the dead link again")
+            server._web["failed"] = time.time() - server.FAIL_TTL - 1
+            server.web_gallery("https://dead.test/x")
+            self.assertEqual(len(calls), 2)
+        finally:
+            server.fetch_url = orig
+            server._web.update(url=None, time=0, raw=None, failed=0)
+
+    def test_a_picture_without_an_image_mime_is_recognised_by_its_bytes(self):
+        self.assertEqual(server.sniff_image(b"\xff\xd8\xff\xe0abc"), "image/jpeg")
+        self.assertEqual(server.sniff_image(b"\x89PNG\r\n\x1a\nrest"), "image/png")
+        self.assertEqual(server.sniff_image(b"RIFF\x00\x00\x00\x00WEBPVP8 "), "image/webp")
+        self.assertEqual(server.sniff_image(b"<html>nope</html>"), "")
+        orig = server.fetch_url
+        server.fetch_url = lambda url, limit: (b"\xff\xd8\xff\xe0jpegdata", "application/octet-stream")
+        server._remote.clear()
+        try:
+            self.assertEqual(server.fetch_remote("https://c.test/p.jpg")[1], "image/jpeg")
+            server._remote.clear()
+            server.fetch_url = lambda url, limit: (b"<html>login</html>", "text/html")
+            self.assertIsNone(server.fetch_remote("https://c.test/p2.jpg"))
+        finally:
+            server.fetch_url = orig
+            server._remote.clear()
+
+
 class Config(unittest.TestCase):
     def setUp(self):
-        self._env = {k: os.environ.get(k) for k in ("MOTION_GALLERY_DIR", "HUB_CONFIG")}
+        self._env = {k: os.environ.get(k) for k in ("MOTION_GALLERY_DIR", "MOTION_GALLERY_BASE", "HUB_CONFIG")}
         os.environ.pop("MOTION_GALLERY_DIR", None)
+        os.environ.pop("MOTION_GALLERY_BASE", None)
         self.tmp = tempfile.TemporaryDirectory()
         server._cache.update(sig=None, data=None)
 

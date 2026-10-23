@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { categories, chatText, excerpt, filterItems, fmtDuration, matches, mediaUrl, metaLine, posterName, processPort, sessionOf, tagList, targets } from "../lib.js";
+import { categories, chatText, excerpt, filterItems, fmtDuration, linksOf, matches, mediaUrl, metaLine, posterName, processPort, sessionOf, sourceList, tagList, targets } from "../lib.js";
 
 const ITEMS = [
   { slug: "a-1", category: "Product", author: "Anna", tags: ["loop", "3d"], prompt: "A glossy bottle spins on a pedestal" },
@@ -82,4 +82,24 @@ test("posterName and mediaUrl", () => {
   assert.equal(mediaUrl("http://h:1", "/f/a.mp4"), "http://h:1/f/a.mp4");
   assert.equal(mediaUrl("http://h:1", "https://cdn/x.jpg"), "https://cdn/x.jpg");
   assert.equal(mediaUrl("http://h:1", ""), "");
+});
+
+test("sources: counts, filter by one source, the source is searchable", () => {
+  const items = [
+    { slug: "a", sources: ["skillry", "remotion"], prompt: "x" },
+    { slug: "b", sources: ["skillry"], prompt: "y" },
+    { slug: "c", prompt: "z" },
+  ];
+  assert.deepEqual(sourceList(items), [{ name: "skillry", n: 2 }, { name: "remotion", n: 1 }]);
+  assert.deepEqual(filterItems(items, { source: "skillry" }).map((i) => i.slug), ["a", "b"]);
+  assert.deepEqual(filterItems(items, { source: "remotion" }).map((i) => i.slug), ["a"]);
+  assert.deepEqual(filterItems(items, { q: "remotion" }).map((i) => i.slug), ["a"]);
+  assert.deepEqual(filterItems(items, {}).length, 3);
+});
+
+test("linksOf: links first, an old post/page as a fallback, only http(s)", () => {
+  assert.deepEqual(linksOf({ links: [{ source: "s", url: "https://e.com/1" }, { source: "bad", url: "javascript:1" }] }), [{ source: "s", url: "https://e.com/1" }]);
+  assert.deepEqual(linksOf({ post: "https://e.com/p", page: "https://e.com/g" }), [{ source: "", url: "https://e.com/p" }, { source: "", url: "https://e.com/g" }]);
+  assert.deepEqual(linksOf({ post: "ftp://x" }), []);
+  assert.deepEqual(linksOf(null), []);
 });

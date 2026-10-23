@@ -43,7 +43,19 @@ posters/<slug>.jpg       poster
 }
 ```
 
+Where an example comes from is optional: `"sources": ["site-a", "site-b"]` (one example can be found in several places) gives a row of source chips to filter by, and `"pages": { "site-a": "https://…", "site-b": "https://…" }` gives the links to the originals (`↗` opens the first one; a plain `post` / `page` still works). `video` is a full-size clip; when `preview` is not set the card plays it.
+
 Only `slug` and one of `preview` / `poster` are required; a field left out falls back to `previews/<slug>.mp4|webm|mov` and `posters/<slug>.jpg|png|webp`. `preview` and `poster` may be a path inside the folder or an `http(s)` URL (a remote poster is fetched by the plugin process, up to 12 MB), so the files can live on any storage. The file is re-read when it changes.
+
+### Files on the web instead of a folder
+
+If the gallery lives on a storage with a public link, set the base address instead of (or next to) the folder:
+
+```json
+{ "extensions": { "motion-gallery": { "media_base": "https://storage.example.com/public/gallery/" } } }
+```
+
+A relative path of `gallery.json` that is not in the folder (`previews/x.mp4`, `posters/x.jpg`, `videos/x.mp4`) is then taken from `<media_base>/<path>`; the browser loads previews straight from there. With a base and no folder, `gallery.json` itself is read from `<media_base>/gallery.json` (kept for a minute). The environment variable `MOTION_GALLERY_BASE` overrides the setting. The plugin ships with no address: a public link is a secret of its owner, put it only in your own `hub.json`.
 
 ## Safety
 
@@ -51,7 +63,9 @@ The plugin process listens on `127.0.0.1` only (hub page port + 12), checks the 
 
 ## Install
 
-From the marketplace in the hub (Settings → Plugins, search "Motion Gallery"). The plugin uses the `composer.tools` slot for the chat-input button; on a hub without that slot the view works alone.
+From the marketplace in the hub (Settings → Plugins, search "Motion Gallery"). The plugin uses the `composer.tools` slot for the chat-input button (a slot of the hub page, button before the microphone); on a hub without that slot the button does not appear and the view works alone. The plugin process takes the hub page port + 12; if that port is busy it exits with a message in the log.
+
+Files shown in the grid (posters, previews) are loaded by the browser straight from their address (the folder or `media_base`); the plugin process fetches only the poster that goes into the chat, and `gallery.json` when there is a base and no folder.
 
 ## Tests
 

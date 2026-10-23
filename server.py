@@ -1,7 +1,8 @@
 """Hub Motion Gallery: the plugin process serves a gallery folder (gallery.json, previews, posters) to the hub page.
 
 The folder is set in hub.json (extensions.<account>:motion-gallery.gallery_dir, or MOTION_GALLERY_DIR for tests); nothing is
-set - an empty gallery with a hint. The process listens on localhost, hub page port + 12, and answers only the hub page
+set - an empty gallery with a hint. Relative paths of gallery.json that are not in the folder are taken from a web base
+(media_base, or MOTION_GALLERY_BASE): <base>/<path>; with a base and no folder gallery.json is read from <base>/gallery.json. The process listens on localhost, hub page port + 12, and answers only the hub page
 (Origin) for data; videos and pictures are plain GETs (a <video> and an <img> send no Origin).
   /gallery.json   the normalised list (see load())
   /f/<path>       a file of the gallery folder, with Range for video; never outside the folder
@@ -49,18 +50,30 @@ def config():
         return {}
 
 
+def setting(key, env):
+    """A setting of the plugin: the environment (tests) first, then hub.json extensions.<account>:motion-gallery.<key>; "" - not set."""
+    val = (os.environ.get(env) or "").strip()
+    if val:
+        return val
+    for k, v in (config().get("extensions") or {}).items():
+        if isinstance(v, dict) and str(k).rsplit(":", 1)[-1] == NAME and str(v.get(key) or "").strip():
+            return str(v[key]).strip()
+    return ""
+
+
 def gallery_dir():
     """The folder of the gallery, or None: not set / not a folder."""
-    path = (os.environ.get("MOTION_GALLERY_DIR") or "").strip()
-    if not path:
-        for key, val in (config().get("extensions") or {}).items():
-            if isinstance(val, dict) and str(key).rsplit(":", 1)[-1] == NAME and str(val.get("gallery_dir") or "").strip():
-                path = str(val["gallery_dir"]).strip()
-                break
+    path = setting("gallery_dir", "MOTION_GALLERY_DIR")
     if not path:
         return None
     real = os.path.realpath(os.path.expanduser(path))
     return real if os.path.isdir(real) else None
+
+
+def media_base():
+    """The web base for relative paths (no slash at the end), or "": not set / not an http(s) address."""
+    val = setting("media_base", "MOTION_GALLERY_BASE").rstrip("/")
+    return val if is_url(val) else ""
 
 
 def page_origins():
@@ -100,14 +113,18 @@ def duration_of(v):
         return 0
 
 
-def media(root, slug, field, value, folder, exts):
-    """Address of a preview or poster: a URL as is, a file of the folder as /f/<path>; no field - previews/<slug>.<ext> if it exists."""
+def media(root, base, slug, value, folder, exts):
+    """Address of a preview or poster: a URL as is; a file of the folder as /f/<path>; else <base>/<path>.
+    No value - <folder>/<slug>.<ext> in the folder if it exists."""
     value = text(value, 1000)
     if is_url(value):
         return value
-    if value and inside(root, value):
-        return "/f/" + quote(value.replace("\\", "/").lstrip("/"), safe="/")
-    if not value:
+    rel = value.replace("\\", "/").lstrip("/")
+    if value and root and inside(root, value):
+        return "/f/" + quote(rel, safe="/")
+    if value and base and rel and not any(p == ".." for p in rel.split("/")):
+        return base + "/" + quote(rel, safe="/")
+    if not value and root:
         for ext in exts:
             rel = f"{folder}/{slug}{ext}"
             if inside(root, rel):
@@ -115,7 +132,21 @@ def media(root, slug, field, value, folder, exts):
     return ""
 
 
-def normalise(root, raw):
+def links_of(r):
+    """Links to the originals: pages {source: url} (or a plain list of urls), then post and page. -> [{source, url}]"""
+    out = []
+    pages = r.get("pages")
+    if isinstance(pages, dict):
+        out += [{"source": text(k, 80), "url": text(u, 1000)} for k, u in pages.items() if is_url(u)]
+    elif isinstance(pages, list):
+        out += [{"source": "", "url": text(u, 1000)} for u in pages if is_url(u)]
+    for key in ("post", "page"):
+        if is_url(r.get(key)) and not any(l["url"] == text(r[key], 1000) for l in out):
+            out.append({"source": "", "url": text(r[key], 1000)})
+    return out[:8]
+
+
+def normalise(root, raw, base=""):
     """gallery.json (a list or {items: [...]}) -> the entries the page draws. Entries without a slug or without any picture are dropped."""
     rows = raw.get("items") if isinstance(raw, dict) else raw
     out, seen = [], set()
@@ -125,37 +156,71 @@ def normalise(root, raw):
         slug = re.sub(r"[^\w.-]", "-", text(r.get("slug"), 120)).strip("-")
         if not slug or slug in seen:
             continue
-        preview = media(root, slug, "preview", r.get("preview"), "previews", (".mp4", ".webm", ".mov"))
-        poster = media(root, slug, "poster", r.get("poster"), "posters", (".jpg", ".jpeg", ".png", ".webp"))
+        video = media(root, base, slug, r.get("video"), "videos", (".mp4", ".webm", ".mov"))
+        preview = media(root, base, slug, r.get("preview"), "previews", (".mp4", ".webm", ".mov")) or video
+        poster = media(root, base, slug, r.get("poster"), "posters", (".jpg", ".jpeg", ".png", ".webp"))
         if not preview and not poster:
             continue
         seen.add(slug)
+        links = links_of(r)
+        sources = tags_of(r.get("sources") or r.get("source")) or [l["source"] for l in links if l["source"]]
         out.append({"slug": slug, "author": text(r.get("author"), 200), "category": text(r.get("category"), 120), "duration": duration_of(r.get("duration")),
-                    "tags": tags_of(r.get("tags")), "prompt": text(r.get("prompt")), "post": text(r.get("post"), 1000) if is_url(r.get("post")) else "",
-                    "page": text(r.get("page"), 1000) if is_url(r.get("page")) else "", "preview": preview, "poster": poster})
+                    "tags": tags_of(r.get("tags")), "prompt": text(r.get("prompt")), "sources": list(dict.fromkeys(sources)), "links": links,
+                    "post": text(r.get("post"), 1000) if is_url(r.get("post")) else "", "page": text(r.get("page"), 1000) if is_url(r.get("page")) else "",
+                    "preview": preview, "poster": poster})
     return out
 
 
 _cache = {"sig": None, "data": None}
+_web = {"url": None, "time": 0, "raw": None, "failed": 0}
+WEB_TTL = 60
+FAIL_TTL = 30   # after a failed read the base is not asked again for this long (a dead link must not stall every request)
+
+
+def web_gallery(base):
+    """gallery.json from <base>/gallery.json (no folder set): the parsed JSON or None. Kept for WEB_TTL seconds."""
+    now = time.time()
+    same = _web["url"] == base
+    if same and _web["raw"] is not None and now - _web["time"] < WEB_TTL:
+        return _web["raw"]
+    if same and now - _web["failed"] < FAIL_TTL:
+        return _web["raw"]
+    got = fetch_url(base + "/" + FILE, 20 * 1024 * 1024)
+    try:
+        raw = json.loads(got[0].decode("utf-8-sig")) if got else None
+    except ValueError:
+        raw = None
+    if raw is None:
+        if not same:
+            _web.update(url=base, time=0, raw=None)
+        _web["failed"] = time.time()
+        return _web["raw"]   # an old copy is better than an empty page
+    _web.update(url=base, time=now, raw=raw, failed=0)
+    return raw
 
 
 def load():
-    """{configured, ready, items}: configured - a folder is set in the settings, ready - it has a readable gallery.json."""
-    root = gallery_dir()
+    """{configured, ready, items}: configured - a folder or a base is set in the settings, ready - gallery.json is readable."""
+    root, base = gallery_dir(), media_base()
     if not root:
-        configured = bool(os.environ.get("MOTION_GALLERY_DIR") or any(
-            isinstance(v, dict) and str(k).rsplit(":", 1)[-1] == NAME and str(v.get("gallery_dir") or "").strip() for k, v in (config().get("extensions") or {}).items()))
-        return {"configured": configured, "ready": False, "items": []}
+        folder = setting("gallery_dir", "MOTION_GALLERY_DIR")
+        raw = web_gallery(base) if base and not folder else None
+        if raw is None:
+            return {"configured": bool(folder or base), "ready": False, "items": []}
+        sig = ("web", base, _web["time"])
+        if _cache["sig"] != sig:
+            _cache.update(sig=sig, data={"configured": True, "ready": True, "items": normalise(None, raw, base)})
+        return _cache["data"]
     path = os.path.join(root, FILE)
     try:
         st = os.stat(path)
     except OSError:
         return {"configured": True, "ready": False, "items": []}
-    sig = (root, st.st_mtime_ns, st.st_size)
+    sig = (root, base, st.st_mtime_ns, st.st_size)
     if _cache["sig"] != sig:
         try:
             with open(path, encoding="utf-8-sig") as f:
-                items = normalise(root, json.load(f))
+                items = normalise(root, json.load(f), base)
             _cache.update(sig=sig, data={"configured": True, "ready": True, "items": items})
         except (OSError, ValueError):
             _cache.update(sig=None, data=None)
@@ -167,29 +232,45 @@ _remote = {}   # url -> (time, bytes, mime)
 _remote_lock = threading.Lock()
 
 
+def fetch_url(url, limit):
+    """(bytes, mime) of a remote file or None. Through the system proxy first, directly if that fails (the hub proxy can be flaky)."""
+    req = urllib.request.Request(url, headers={"User-Agent": "hub-motion-gallery"})
+    for opener in (urllib.request.build_opener(), urllib.request.build_opener(urllib.request.ProxyHandler({}))):
+        try:
+            with opener.open(req, timeout=15) as r:
+                data = r.read(limit + 1)
+                mime = (r.headers.get("Content-Type") or "").split(";")[0].strip()
+            return None if len(data) > limit else (data, mime)
+        except Exception:
+            continue
+    return None
+
+
+def sniff_image(data):
+    """The mime of a picture by its first bytes, "" if it is not one we know."""
+    for magic, mime in ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"), (b"GIF8", "image/gif")):
+        if data.startswith(magic):
+            return mime
+    return "image/webp" if data[:4] == b"RIFF" and data[8:12] == b"WEBP" else ""
+
+
 def fetch_remote(url):
-    """A remote poster: (bytes, mime) or None. Through the system proxy first, directly if that fails (the hub proxy can be flaky)."""
+    """A remote poster: (bytes, mime) or None; kept for REMOTE_TTL."""
     now = time.time()
     with _remote_lock:
         hit = _remote.get(url)
         if hit and now - hit[0] < REMOTE_TTL:
             return hit[1], hit[2]
-    req = urllib.request.Request(url, headers={"User-Agent": "hub-motion-gallery"})
-    for opener in (urllib.request.build_opener(), urllib.request.build_opener(urllib.request.ProxyHandler({}))):
-        try:
-            with opener.open(req, timeout=15) as r:
-                data = r.read(REMOTE_MAX + 1)
-                mime = (r.headers.get("Content-Type") or "").split(";")[0].strip()
-            if len(data) > REMOTE_MAX or not mime.startswith("image/"):
-                return None
-            with _remote_lock:
-                _remote[url] = (now, data, mime)
-                while len(_remote) > 64:
-                    _remote.pop(next(iter(_remote)))
-            return data, mime
-        except Exception:
-            continue
-    return None
+    got = fetch_url(url, REMOTE_MAX)
+    if got and not got[1].startswith("image/"):
+        got = (got[0], sniff_image(got[0]))   # a storage may answer application/octet-stream for a picture
+    if not got or not got[1].startswith("image/"):
+        return None
+    with _remote_lock:
+        _remote[url] = (now, got[0], got[1])
+        while len(_remote) > 64:
+            _remote.pop(next(iter(_remote)))
+    return got
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -300,7 +381,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError as e:
+        print(f"motion-gallery: port {PORT} (hub page port + 12) is busy: {e}", file=sys.stderr, flush=True)
+        return 1
     srv.daemon_threads = True
     print(f"motion-gallery: http://127.0.0.1:{PORT}", flush=True)
 

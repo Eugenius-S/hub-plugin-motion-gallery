@@ -1,14 +1,14 @@
 // Hub Motion Gallery: the grid of examples - used by the view and by the overlay from a chat input.
 // Many entries are fine: the DOM is built once per list, a filter only hides cards; posters get their address when a card
 // comes near the screen (IntersectionObserver), a video exists only while the mouse is over a card, one at a time.
-import { categories, excerpt, filterItems, fmtDuration, mediaUrl, metaLine, tagList } from "./lib.js";
+import { categories, excerpt, filterItems, fmtDuration, linksOf, mediaUrl, metaLine, sourceList, tagList } from "./lib.js";
 
 const HOVER_MS = 140;   // the mouse must stay this long: a sweep over the grid starts no video
 
 // props: el (hub.el), tr (translator), base() -> process address or "" (not reachable from here), onPick(item),
 //        session? { get(), set(name), list() } - "Insert into" choice (the view; the overlay inserts into its own chat)
 export function createGallery({ el, tr, base, onPick, session = null }) {
-  const S = { data: null, status: "loading", q: "", category: "", tags: new Set(), cards: new Map(), sig: "", shown: 0 };
+  const S = { data: null, status: "loading", q: "", category: "", source: "", tags: new Set(), cards: new Map(), sig: "", shown: 0 };
   let cur = null, timer = 0, io = null, toolsSig = "";
 
   const root = el("div", "mg");
@@ -27,11 +27,12 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
   const bar = el("div", "mg-bar");
   bar.append(search, ...(session ? [pickBox] : []), reload);
   const cats = el("div", "mg-chips");
+  const srcs = el("div", "mg-chips mg-sources");
   const tags = el("div", "mg-chips mg-tags");
   const count = el("div", "mg-count");
   const note = el("div", "mg-note");
   const grid = el("div", "mg-grid");
-  root.append(bar, cats, tags, count, note, grid);
+  root.append(bar, cats, srcs, tags, count, note, grid);
 
   function stop() {
     clearTimeout(timer);
@@ -77,13 +78,13 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     media.append(img);
     const dur = fmtDuration(item.duration);
     if (dur) media.append(el("span", "mg-dur", dur));
-    const link = item.post || item.page;
-    if (link) {
+    const links = linksOf(item);
+    if (links.length) {
       const a = el("a", "mg-link", "↗");
-      a.href = link;
+      a.href = links[0].url;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      a.title = tr("open_post");
+      a.title = [tr("open_post"), links[0].source].filter(Boolean).join(" · ");
       a.addEventListener("click", (e) => e.stopPropagation());
       media.append(a);
     }
@@ -129,6 +130,11 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
       cats.append(chip(tr("all"), !S.category, () => { S.category = ""; drawChips(); applyFilter(); }, items.length));
       for (const c of cl) cats.append(chip(c.name, S.category === c.name, () => { S.category = S.category === c.name ? "" : c.name; drawChips(); applyFilter(); }, c.n));
     }
+    srcs.replaceChildren();
+    const sl = sourceList(items);
+    if (sl.length > 1) {
+      for (const c of sl) srcs.append(chip(c.name, S.source === c.name, () => { S.source = S.source === c.name ? "" : c.name; drawChips(); applyFilter(); }, c.n));
+    }
     tags.replaceChildren();
     for (const t of tagList(items)) {
       const on = S.tags.has(t.name);
@@ -149,7 +155,7 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
   function applyFilter() {
     stop();
     const items = S.data?.items || [];
-    const keep = new Set(filterItems(items, { q: S.q, category: S.category, tags: [...S.tags] }).map((i) => i.slug));
+    const keep = new Set(filterItems(items, { q: S.q, category: S.category, source: S.source, tags: [...S.tags] }).map((i) => i.slug));
     for (const [slug, card] of S.cards) card.hidden = !keep.has(slug);
     S.shown = keep.size;
     drawNote();
@@ -165,13 +171,14 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     } catch { /* the process is not up */ }
     if (!data || !Array.isArray(data.items)) { S.status = "offline"; return applyFilter(); }
     S.status = "ok";
-    const sig = JSON.stringify(data.items.map((i) => [i.slug, i.poster, i.preview, i.prompt, i.category, i.author, i.duration, i.tags, i.post, i.page]));
+    const sig = JSON.stringify(data.items.map((i) => [i.slug, i.poster, i.preview, i.prompt, i.category, i.author, i.duration, i.tags, i.sources, i.links, i.post, i.page]));
     S.data = data;
     if (sig !== S.sig) {
       S.sig = sig;
       S.cards = new Map(data.items.map((i) => [i.slug, buildCard(i)]));
       grid.replaceChildren(...S.cards.values());
       if (S.category && !data.items.some((i) => i.category === S.category)) S.category = "";
+      if (S.source && !data.items.some((i) => (i.sources || []).includes(S.source))) S.source = "";
       for (const t of [...S.tags]) if (!data.items.some((i) => (i.tags || []).includes(t))) S.tags.delete(t);
       drawChips();
       observe();
