@@ -29,18 +29,29 @@ else:
     BASE = unittest.TestCase
 
 
+# What the page throws on its own. The driver's "errors" step reloads the page first and sees only the reload, so a collector is
+# installed before the page scripts ({"go": ..., "init": COLLECT}) and read with eval. A <video> that fails is expected for a
+# preview that is not uploaded yet (the card must go calm: data-nopreview), it is not an error of the page.
+COLLECT = ("window.__mg = []; addEventListener('error', e => { if (!(e.target && e.target.tagName === 'VIDEO')) "
+           "window.__mg.push(String(e.message || (e.target && e.target.src) || 'error')); }, true); "
+           "addEventListener('unhandledrejection', e => window.__mg.push(String(e.reason))); "
+           "const ce = console.error; console.error = (...a) => { window.__mg.push(a.join(' ')); ce.apply(console, a); };")
+
+
 def cards_visible(sel="document"):
     return f"[...{sel}.querySelectorAll('.mg-card')].filter(c => !c.hidden).length"
 
 
-@unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
-class Page(BASE):
+class Sandbox(BASE):
+    def ext_config(self):
+        return {"gallery_dir": STUB}
+
     def setUp(self):
         from unittest import mock
         super().setUp()   # the page reads hub.json per request, so it can be written after
         cfg = os.path.join(self.state, "hub.json")
         with open(cfg, "w", encoding="utf-8") as f:
-            json.dump({"extensions": {"motion-gallery": {"path": PLUGIN, "web": "main.js", "gallery_dir": STUB}}}, f)
+            json.dump({"extensions": {"motion-gallery": {"path": PLUGIN, "web": "main.js", **self.ext_config()}}}, f)
         env = mock.patch.dict(os.environ, {"HUB_CONFIG": cfg, "HUB_STATE_DIR": self.state, "HUB_WEB_PORT": str(self.port)})
         env.start()
         self.addCleanup(env.stop)
@@ -86,6 +97,9 @@ class Page(BASE):
                     out.append(t)
         return out
 
+
+@unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
+class Page(Sandbox):
     def test_view_hover_filter_and_pick(self):
         r = self.run_steps([
             (None, {"go": self.url + "#/s/a"}),
@@ -147,33 +161,221 @@ class Page(BASE):
 
     def test_button_in_the_chat_input_opens_the_gallery_over_the_chat(self):
         r = self.run_steps([
-            (None, {"go": self.url + "#/s/b"}),
+            (None, {"go": self.url + "#/s/b", "init": COLLECT}),
             (None, {"until": "!!document.querySelector('form.composer .mg-open')", "ms": 10000}),
             (None, {"eval": "document.querySelector('form.composer .mg-open').click(); 1"}),
-            ("opened", {"until": "document.querySelectorAll('.mg-over .mg-card').length >= 8", "ms": 10000}),
+            ("opened", {"until": "document.querySelectorAll('.mg-panel .mg-card').length >= 8", "ms": 10000}),
+            (None, {"sleep": 800}),
+            # the panel sits right above the input: it does not cover it, there is no backdrop, the input is what is under the pointer
+            ("layout", {"eval": GEOMETRY}),
             (None, self.shot("overlay.png", width=1300, height=900)),
-            (None, {"key": "Escape"}),
-            ("esc", {"until": "!document.querySelector('.mg-over')", "ms": 3000}),
-            (None, {"eval": "document.querySelector('form.composer .mg-open').click(); 1"}),
-            (None, {"until": "document.querySelectorAll('.mg-over .mg-card').length >= 8", "ms": 10000}),
-            (None, {"eval": "document.querySelectorAll('.mg-over .mg-card')[2].click(); 1"}),
-            (None, {"until": "!document.querySelector('.mg-over') && document.querySelector('form.composer textarea').value.length > 0", "ms": 10000}),
+            # a click on a card puts it into the input and the gallery stays open; a second click, then typing
+            # a mouse pick: the press must not take the focus (defaultPrevented), the click has detail 1 and returns it to the input
+            ("md", {"eval": "(() => { const e = new MouseEvent('mousedown', { bubbles: true, cancelable: true }); document.querySelectorAll('.mg-panel .mg-card')[2].dispatchEvent(e); return e.defaultPrevented; })()"}),
+            (None, {"eval": "document.querySelectorAll('.mg-panel .mg-card')[2].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })); 1"}),
             (None, {"until": "document.querySelectorAll('form.composer .pchip').length === 1", "ms": 8000}),
-            ("picked", {"eval": "[location.hash, document.querySelector('form.composer textarea').value, document.querySelectorAll('form.composer .pchip').length]"}),
+            ("focus", {"eval": "document.activeElement && document.activeElement.tagName"}),
+            (None, {"eval": "document.querySelectorAll('.mg-panel .mg-card')[4].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })); 1"}),
+            (None, {"until": "document.querySelectorAll('form.composer .pchip').length === 2", "ms": 8000}),
+            ("after", {"eval": "[!!document.querySelector('.mg-panel'), document.querySelector('form.composer textarea').value, [...document.querySelectorAll('.mg-panel .mg-added')].filter(b => !b.hidden).length, " + GEOMETRY + "]"}),
             (None, self.shot("composer-overlay.png", width=1300, height=900)),
-            ("errors", {"errors": 1500}),
+            # typing with the keyboard right after the picks, nothing clicked in the input: the focus is already there
+            (None, {"typed": " my words"}),
+            ("typed", {"eval": "[!!document.querySelector('.mg-panel'), document.querySelector('form.composer textarea').value.endsWith('my words'), document.activeElement.tagName]"}),
+            # Escape pressed in the input closes the gallery too
+            (None, {"key": "Escape"}),
+            ("escin", {"until": "!document.querySelector('.mg-panel')", "ms": 3000}),
+            (None, {"eval": "document.querySelector('form.composer .mg-open').click(); 1"}),
+            (None, {"until": "!!document.querySelector('.mg-panel .mg-close')", "ms": 3000}),
+            # the cross closes it; the button opens it again and closes it; Escape inside it closes it
+            (None, {"eval": "document.querySelector('.mg-panel .mg-close').click(); 1"}),
+            ("x", {"until": "!document.querySelector('.mg-panel')", "ms": 3000}),
+            (None, {"eval": "document.querySelector('form.composer .mg-open').click(); 1"}),
+            (None, {"until": "!!document.querySelector('.mg-panel')", "ms": 3000}),
+            (None, {"eval": "document.querySelector('form.composer .mg-open').click(); 1"}),
+            ("toggle", {"until": "!document.querySelector('.mg-panel')", "ms": 3000}),
+            (None, {"eval": "document.querySelector('form.composer .mg-open').click(); 1"}),
+            (None, {"until": "!!document.querySelector('.mg-panel .mg-search')", "ms": 3000}),
+            (None, {"eval": "document.querySelector('.mg-panel .mg-search').focus(); 1"}),
+            (None, {"key": "Escape"}),
+            ("esc", {"until": "!document.querySelector('.mg-panel')", "ms": 3000}),
+            ("jserr", {"eval": "window.__mg"}),
         ])
         self.assertTrue(r["opened"]["until"], r["opened"])
-        self.assertTrue(r["esc"]["until"], "Escape closes it")
-        hashed, text, chips = r["picked"]["eval"]
-        self.assertEqual(hashed, "#/s/b")
+        free, covered = r["layout"]["eval"]["gap"], r["layout"]["eval"]["covered"]
+        self.assertGreaterEqual(free, 0, "the panel ends above the input: %s" % r["layout"])
+        self.assertFalse(covered, "the input is what is under its own centre: %s" % r["layout"])
+        self.assertEqual(r["layout"]["eval"]["backdrop"], 0, "no backdrop")
+        stays, text, added, geo = r["after"]["eval"]
+        self.assertTrue(stays, "the gallery stays open after a pick")
         self.assertIn("Sample prompt 3", text)
-        self.assertEqual(chips, 1)
-        self.assertFalse(r["errors"].get("errors"), r["errors"])
+        self.assertIn("Sample prompt 5", text)
+        self.assertEqual(added, 2, "both cards carry a check mark")
+        self.assertGreaterEqual(geo["gap"], 0, "the input grew (chips) and the panel moved up with it: %s" % geo)
+        self.assertFalse(geo["covered"], geo)
+        self.assertTrue(r["md"]["eval"], "a press on a card does not take the focus")
+        self.assertEqual(r["focus"]["eval"], "TEXTAREA", "after a mouse pick the focus is in the input")
+        self.assertEqual(r["typed"]["eval"], [True, True, "TEXTAREA"], "typing works while it is open")
+        self.assertTrue(r["escin"]["until"], "Escape pressed in the input closes it")
+        self.assertTrue(r["x"]["until"], "the cross closes it")
+        self.assertTrue(r["toggle"]["until"], "the button closes it as well")
+        self.assertTrue(r["esc"]["until"], "Escape inside it closes it")
+        self.assertEqual(r["jserr"]["eval"], [], "the page threw nothing")
+        self.assertEqual(self.sent(), [])
+
+
+# panel above the input? gap = input top - panel bottom (px, >= 0 means above); covered = the element at the input centre is not the input
+GEOMETRY = """(() => {
+  const p = document.querySelector('.mg-panel'), f = document.querySelector('form.composer'), t = f.querySelector('textarea');
+  const pr = p.getBoundingClientRect(), fr = f.getBoundingClientRect(), tr = t.getBoundingClientRect();
+  const at = document.elementFromPoint(tr.left + tr.width / 2, tr.top + tr.height / 2);
+  return { gap: Math.round(fr.top - pr.bottom), covered: !(at === t || f.contains(at)), backdrop: document.querySelectorAll('.mg-over').length,
+           close: !!p.querySelector('.mg-close svg, .mg-close .icon'), vh: innerHeight, top: Math.round(pr.top) };
+})()"""
+
+
+@unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
+class Ghost(Sandbox):
+    """An entry whose preview file is not there (the shared gallery lists examples before their previews are uploaded)."""
+    def ext_config(self):
+        import shutil
+        import tempfile
+        root = tempfile.mkdtemp(prefix="mg-ghost-")
+        self.addCleanup(shutil.rmtree, root, True)
+        shutil.copytree(STUB, root, dirs_exist_ok=True)
+        path = os.path.join(root, "gallery.json")
+        with open(path, encoding="utf-8") as f:
+            rows = json.load(f)
+        rows.append({"slug": "ghost", "author": "Nobody", "category": "Product", "duration": 3, "prompt": "A prompt whose preview is not uploaded",
+                     "preview": "previews/ghost-not-uploaded.mp4", "poster": "posters/sample-1.jpg"})
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(rows, f)
+        # like the shared gallery: files by an address (media_base), the list names a preview the address does not have yet
+        import functools
+        import http.server
+        import threading
+        class Quiet(http.server.SimpleHTTPRequestHandler):
+            def log_message(self, *a, **k):
+                pass
+        handler = functools.partial(Quiet, directory=root)
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        return {"media_base": f"http://127.0.0.1:{srv.server_address[1]}"}
+
+    def test_a_card_without_its_preview_file_stays_a_calm_poster(self):
+        card = "[...document.querySelectorAll('.mg-card')].find(c => c.dataset.slug === 'ghost')"
+        r = self.run_steps([
+            (None, {"go": self.url + "#/s/a", "init": COLLECT}),
+            (None, {"until": "!!document.querySelector('form.composer textarea')", "ms": 10000}),
+            (None, {"eval": "location.hash = '#/x/motion-gallery'; 1"}),
+            ("cards", {"until": f"!!({card})", "ms": 10000}),
+            (None, {"sleep": 1500}),   # the view loads the list again when it is shown: hover only when the cards have settled
+            (None, {"eval": f"({card}).scrollIntoView(); ({card}).dispatchEvent(new MouseEvent('mouseenter')); 1"}),
+            ("marked", {"until": f"({card}).dataset.nopreview === '1'", "ms": 8000}),
+            ("dbg", {"eval": f"[({card}).dataset.nopreview || '', document.querySelectorAll('video').length, ({card}).className, document.querySelectorAll('.mg-card').length]"}),
+            (None, {"sleep": 800}),
+            ("state", {"eval": f"[document.querySelectorAll('video').length, document.querySelectorAll('.mg-card.playing').length, ({card}).querySelector('.mg-poster').complete]"}),
+            (None, {"eval": f"({card}).dispatchEvent(new MouseEvent('mouseleave')); document.querySelectorAll('.mg-card')[1].dispatchEvent(new MouseEvent('mouseenter')); 1"}),
+            ("others", {"until": "document.querySelectorAll('.mg-card video').length === 1", "ms": 4000}),
+            (None, {"eval": f"({card}).click(); 1"}),
+            ("picked", {"until": "document.querySelector('form.composer textarea').value.includes('not uploaded')", "ms": 8000}),
+            ("jserr", {"eval": "window.__mg"}),
+        ])
+        self.assertTrue(r["cards"]["until"], r["cards"])
+        self.assertTrue(r["marked"]["until"], f"the failed preview marks the card, it is not asked again: {r['dbg']}")
+        self.assertEqual(r["state"]["eval"][:2], [0, 0], "no video is left on the page and nothing plays")
+        self.assertTrue(r["others"]["until"], "other cards keep their previews")
+        self.assertTrue(r["picked"]["until"], "the card still picks its prompt")
+        self.assertEqual(r["jserr"]["eval"], [], "a missing preview file is not an error of the page")
+        self.assertEqual(self.sent(), [])
+
+
+REAL_BASE = os.environ.get("MG_REAL_BASE", "")
+
+
+def curl(*args):
+    import shutil
+    exe = shutil.which("curl")
+    if not exe:
+        return None
+    r = subprocess.run([exe, "-sSL", "--max-time", "20", *args], capture_output=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def missing_preview(base):
+    """The id of an entry whose preview file is not in the cloud yet (404), or "" when every preview is there.
+    curl, because Python on some machines does not trust the certificate of the cloud; the address is only in the environment."""
+    from concurrent.futures import ThreadPoolExecutor
+    raw = curl(base.rstrip("/") + "/gallery.json")
+    items = json.loads(raw) if raw else []
+    items = items.get("items", []) if isinstance(items, dict) else items
+    items = [it for it in items if (it.get("preview") or "") and not it["preview"].startswith("http")]
+
+    def gone(it):
+        code = curl("-r", "0-0", "-o", os.devnull, "-w", "%{http_code}", base.rstrip("/") + "/" + it["preview"].lstrip("/"))
+        return bool(code) and code.decode().strip().startswith("404")
+
+    with ThreadPoolExecutor(16) as pool:
+        flags = list(pool.map(gone, items))
+    return next((it.get("slug") or it.get("id") or "" for it, f in zip(items, flags) if f), "")
+
+
+@unittest.skipUnless(READY and CHROME_READY and REAL_BASE, "needs MG_REAL_BASE: the address of the real shared gallery (a secret, never in the repo)")
+class Real(Sandbox):
+    """The shared gallery as it really is: id/seconds/title/skill fields, 373 entries, some preview files not uploaded yet."""
+    def ext_config(self):
+        return {"media_base": REAL_BASE}
+
+    def test_real_gallery_json_cards_posters_filters_and_missing_previews(self):
+        # an entry whose preview is not in the cloud yet, if there is one today (the Ghost test covers the missing file always);
+        # otherwise the first card is hovered and its video must play
+        gone = missing_preview(REAL_BASE)
+        print(f"real gallery: missing preview = {gone or 'none, every preview is uploaded'}", file=sys.stderr)
+        pick = f"[...document.querySelectorAll('.mg-card')].find(c => c.dataset.slug === {json.dumps(gone)}) || document.querySelectorAll('.mg-card')[0]"
+        # the driver gives one call 60 s: the slow network part and the checks are separate calls on the same page
+        r = self.run_steps([
+            (None, {"go": self.url + "#/s/a", "init": COLLECT}),
+            (None, {"until": "!!document.querySelector('form.composer textarea')", "ms": 10000}),
+            (None, {"eval": "location.hash = '#/x/motion-gallery'; 1"}),
+            ("cards", {"until": "document.querySelectorAll('.mg-card').length >= 300", "ms": 30000}),
+        ])
+        r.update(self.run_steps([
+            (None, {"sleep": 4000}),
+            ("posters", {"eval": "[...document.querySelectorAll('.mg-poster')].filter(i => i.src && i.complete && i.naturalWidth > 0).length"}),
+            ("total", {"eval": "document.querySelectorAll('.mg-card').length"}),
+            ("count", {"eval": "document.querySelector('.mg-count').textContent"}),
+            ("chips", {"eval": "[...document.querySelectorAll('.mg-chips .mg-chip')].map(b => b.textContent)"}),
+            (None, self.shot("real-gallery.png", width=1300, height=900)),
+            (None, {"eval": f"(() => {{ const c = {pick}; c.scrollIntoView(); c.dispatchEvent(new MouseEvent('mouseenter')); return 1; }})()"}),
+            (None, {"sleep": 3500}),
+            ("video", {"eval": f"(() => {{ const c = {pick}; return [document.querySelectorAll('video').length, c.dataset.nopreview || '', document.querySelectorAll('.mg-card.playing').length]; }})()"}),
+            (None, {"eval": f"{pick}.dispatchEvent(new MouseEvent('mouseleave')); 1"}),
+            (None, {"eval": "document.querySelectorAll('.mg-card')[0].click(); 1"}),
+            (None, {"until": "document.querySelector('form.composer textarea').value.length > 0 && document.querySelectorAll('form.composer .pchip').length === 1", "ms": 20000}),
+            ("picked", {"eval": "document.querySelector('form.composer textarea').value.length"}),
+            ("jserr", {"eval": "window.__mg"}),
+        ]))
+        self.assertTrue(r["cards"]["until"], r["cards"])
+        self.assertEqual(r["total"]["eval"], 373)
+        self.assertGreaterEqual(r["posters"]["eval"], 6, "posters of the cards near the screen load from the base")
+        self.assertRegex(r["count"]["eval"], r"^373 (of|из) 373$")
+        self.assertGreaterEqual(len(r["chips"]["eval"]), 8, r["chips"])   # categories, 4 sources, tags
+        n, nopreview, playing = r["video"]["eval"]
+        if gone:
+            self.assertEqual(nopreview, "1", "the failed preview marks the card")
+            self.assertEqual((n, playing), (0, 0), "a preview that is not uploaded yet leaves a calm poster card, no video left")
+        else:
+            self.assertEqual((n, nopreview), (1, ""), "every preview is in the cloud: the hovered card plays")
+        self.assertGreater(r["picked"]["eval"], 20)
+        self.assertEqual(r["jserr"]["eval"], [], "the page threw nothing")
         self.assertEqual(self.sent(), [])
 
 
 if __name__ == "__main__":
     # Page inherits PageInChrome: only our own tests, not the whole hub e2e suite
-    own = [f"Page.{n}" for n in vars(Page) if n.startswith("test_")]
-    unittest.main(argv=[sys.argv[0], *sys.argv[1:], *own])
+    own = [f"{c.__name__}.{n}" for c in (Page, Ghost, Real) for n in vars(c) if n.startswith("test_")]
+    names = [a for a in sys.argv[1:] if not a.startswith("-")]
+    flags = [a for a in sys.argv[1:] if a.startswith("-")]
+    unittest.main(argv=[sys.argv[0], *flags, *(names or own)])

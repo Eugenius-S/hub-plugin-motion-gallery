@@ -5,7 +5,7 @@
 .mg-search:focus-visible, .mg-select:focus-visible, .mg-btn:focus-visible, .mg-chip:focus-visible, .mg-card:focus-visible, .mg-close:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .mg-target { display: flex; align-items: center; gap: 6px; color: var(--muted-foreground); font-size: 13px; white-space: nowrap; }
 .mg-target[hidden] { display: none; }
-.mg-select { height: 36px; max-width: 220px; padding: 0 8px; border: 1px solid var(--input); border-radius: var(--radius); background: var(--card); color: var(--foreground); font: inherit; }
+.mg-select { height: 36px; min-width: 150px; max-width: 260px; padding: 0 10px; border: 1px solid var(--input); border-radius: var(--radius); background: var(--card); color: var(--foreground); font: inherit; }
 .mg-btn { height: 36px; min-width: 36px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--muted-foreground); font: inherit; cursor: pointer; }
 .mg-btn:hover { color: var(--foreground); }
 .mg-chips { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -29,23 +29,36 @@
 .mg-video { opacity: 0; transition: opacity .2s; background: transparent; }
 .mg-card.playing .mg-video { opacity: 1; }
 .mg-dur { position: absolute; right: 8px; bottom: 8px; padding: 1px 7px; border-radius: 999px; background: rgba(0, 0, 0, .62); color: #fff; font-size: 11px; font-variant-numeric: tabular-nums; pointer-events: none; }
-.mg-link { position: absolute; left: 8px; top: 8px; width: 26px; height: 26px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; display: grid; place-items: center; text-decoration: none; font-size: 13px; opacity: 0; transition: opacity .15s; }
+.mg-link { position: absolute; left: 8px; top: 8px; width: 28px; height: 28px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; display: grid; place-items: center; text-decoration: none; opacity: 0; transition: opacity .15s; }
 .mg-card:hover .mg-link, .mg-card:focus-within .mg-link { opacity: 1; }
 .mg-cap { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .mg-meta { font-size: 12px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mg-prompt { font-size: 13px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
-/* the gallery over the page (the button in a chat input) */
-.mg-over { position: fixed; inset: 0; z-index: 9000; background: rgba(0, 0, 0, .45); display: grid; place-items: center; padding: 3vh 3vw; }
-.mg-panel { position: relative; width: min(1180px, 100%); max-height: 100%; overflow: auto; background: var(--background); border: 1px solid var(--border); border-radius: calc(var(--radius) * 1.5); box-shadow: var(--shadow-plate, 0 20px 60px rgba(0, 0, 0, .35)); }
-.mg-panel .mg { padding-top: 18px; }
-.mg-panel .mg-bar { padding-right: 44px; }
-.mg-close { position: absolute; right: 14px; top: 14px; width: 32px; height: 32px; border: 0; border-radius: 999px; background: var(--muted); color: var(--muted-foreground); font-size: 14px; cursor: pointer; z-index: 1; }
-.mg-close:hover { color: var(--foreground); }
+/* the gallery over the chat (the button in a chat input): docked right above the input, which stays free; no backdrop */
+.mg-panel { position: fixed; z-index: 900; display: flex; flex-direction: column; min-height: 0; background: var(--background); border: 1px solid var(--border); border-radius: calc(var(--radius) * 1.5); box-shadow: var(--shadow-plate, 0 12px 40px rgba(0, 0, 0, .25)); }
+.mg-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; border-radius: inherit; }
+.mg-panel .mg { padding-top: 14px; }
+.mg-panel .mg-bar { padding-right: 48px; }
+.mg-close { position: absolute; right: 12px; top: 10px; width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--muted-foreground); cursor: pointer; z-index: 1; }
+.mg-close .icon { width: 18px; height: 18px; fill: currentColor; }
+.mg-close:hover { color: var(--foreground); border-color: var(--input); }
 
-.mg-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 9100; max-width: min(520px, 90vw); padding: 10px 16px; border-radius: var(--radius); background: var(--foreground); color: var(--background); font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
+/* icons of the plugin: Icons8 Material Outlined, painted in the text color */
+.mg-ico { display: block; width: 20px; height: 20px; background: currentColor; -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+.mg-ico-refresh { -webkit-mask-image: url("icons/refresh.svg"); mask-image: url("icons/refresh.svg"); }
+.mg-ico-open { width: 16px; height: 16px; -webkit-mask-image: url("icons/open.svg"); mask-image: url("icons/open.svg"); }
+.mg-ico-check { -webkit-mask-image: url("icons/check.svg"); mask-image: url("icons/check.svg"); }
+.mg-btn { display: grid; place-items: center; padding: 0; }
+.mg-added { position: absolute; right: 8px; top: 8px; width: 28px; height: 28px; border-radius: 999px; background: var(--primary); color: var(--primary-foreground, #fff); display: grid; place-items: center; pointer-events: none; }
+.mg-added[hidden] { display: none; }
+.mg-added .mg-ico { width: 18px; height: 18px; }
+.mg-title { font-size: 13px; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.mg-toast { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); z-index: 9100; max-width: min(520px, 90vw); padding: 10px 16px; border-radius: var(--radius); background: var(--foreground); color: var(--background); font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 
 /* the button before the microphone (the composer.tools slot) */
+.mg-open.on { color: var(--primary); }
 .mg-open .mg-oi { display: block; width: 22px; height: 22px; background: currentColor;
   -webkit-mask: url("icon.svg") center / contain no-repeat; mask: url("icon.svg") center / contain no-repeat; }
 

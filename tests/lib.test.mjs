@@ -60,6 +60,13 @@ test("chatText is the full prompt, untouched inside", () => {
   assert.equal(chatText(null), "");
 });
 
+test("chatText of a skill entry (no prompt) is its description, install lines and repo; the title is searchable", () => {
+  const skill = { desc: "D", install: "npx skills add a/b", repo: "https://github.com/a/b" };
+  assert.equal(chatText({ prompt: "", skill }), "D\n\nnpx skills add a/b\n\nhttps://github.com/a/b");
+  assert.equal(chatText({ prompt: "P", skill }), "P");
+  assert.ok(matches({ slug: "s", title: "Launch film", prompt: "" }, { q: "launch film" }));
+});
+
 test("sessionOf reads only #/s/<name>", () => {
   assert.equal(sessionOf("#/s/ads-1"), "ads-1");
   assert.equal(sessionOf("#/s/%D0%B0%D0%B1"), "аб");

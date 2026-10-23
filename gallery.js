@@ -8,7 +8,8 @@ const HOVER_MS = 140;   // the mouse must stay this long: a sweep over the grid 
 // props: el (hub.el), tr (translator), base() -> process address or "" (not reachable from here), onPick(item),
 //        session? { get(), set(name), list() } - "Insert into" choice (the view; the overlay inserts into its own chat)
 export function createGallery({ el, tr, base, onPick, session = null }) {
-  const S = { data: null, status: "loading", q: "", category: "", source: "", tags: new Set(), cards: new Map(), sig: "", shown: 0 };
+  const ico = (name) => { const s = el("span", "mg-ico mg-ico-" + name); s.setAttribute("aria-hidden", "true"); return s; };
+  const S ={ data: null, status: "loading", q: "", category: "", source: "", tags: new Set(), cards: new Map(), sig: "", shown: 0, added: new Set() };
   let cur = null, timer = 0, io = null, toolsSig = "";
 
   const root = el("div", "mg");
@@ -16,8 +17,9 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
   search.type = "search";
   search.autocomplete = "off";
   search.addEventListener("input", () => { S.q = search.value; applyFilter(); });
-  const reload = el("button", "mg-btn", "↻");
+  const reload = el("button", "mg-btn");
   reload.type = "button";
+  reload.append(ico("refresh"));
   reload.addEventListener("click", () => load());
   const pickBox = el("label", "mg-target");
   const pick = el("select", "mg-select");
@@ -48,7 +50,7 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
   function play(card, item) {
     stop();
     const src = mediaUrl(base(), item.preview);
-    if (!src) return;
+    if (!src || card.dataset.nopreview) return;
     const v = document.createElement("video");
     v.className = "mg-video";
     v.muted = true;
@@ -57,7 +59,8 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     v.preload = "none";
     v.disablePictureInPicture = true;
     v.addEventListener("playing", () => card.classList.add("playing"));
-    v.addEventListener("error", () => { if (cur?.v === v) stop(); });
+    // no preview file (yet): the card stays a calm poster and is not asked again until the list is reloaded
+    v.addEventListener("error", () => { card.dataset.nopreview = "1"; if (cur?.v === v) stop(); });
     v.src = src;
     card.querySelector(".mg-media").append(v);
     cur = { card, v };
@@ -80,24 +83,32 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     if (dur) media.append(el("span", "mg-dur", dur));
     const links = linksOf(item);
     if (links.length) {
-      const a = el("a", "mg-link", "↗");
+      const a = el("a", "mg-link");
+      a.append(ico("open"));
       a.href = links[0].url;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
       a.title = [tr("open_post"), links[0].source].filter(Boolean).join(" · ");
+      a.setAttribute("aria-label", a.title);
       a.addEventListener("click", (e) => e.stopPropagation());
       media.append(a);
     }
     const cap = el("div", "mg-cap");
     const meta = metaLine(item);
     if (meta) cap.append(el("div", "mg-meta", meta));
-    if (item.prompt) cap.append(el("div", "mg-prompt", excerpt(item.prompt)));
+    if (item.title) cap.append(el("div", "mg-title", item.title));
+    const body = item.prompt || item.skill?.desc || "";
+    if (body) cap.append(el("div", "mg-prompt", excerpt(body)));
     card.append(media, cap);
-    card.title = item.prompt ? item.prompt.slice(0, 400) : item.slug;
+    card.title = (item.title ? item.title + "\n" : "") + (body ? body.slice(0, 400) : item.slug);
+    const done = el("span", "mg-added");
+    done.append(ico("check"));
+    done.hidden = !S.added.has(item.slug);
+    media.append(done);
     card.addEventListener("mouseenter", () => { clearTimeout(timer); timer = setTimeout(() => play(card, item), HOVER_MS); });
     card.addEventListener("mouseleave", () => { clearTimeout(timer); if (cur?.card === card) stop(); });
-    card.addEventListener("click", () => onPick(item));
-    card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(item); } });
+    card.addEventListener("click", (e) => onPick(item, e));
+    card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(item, e); } });
     return card;
   }
 
@@ -171,7 +182,7 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     } catch { /* the process is not up */ }
     if (!data || !Array.isArray(data.items)) { S.status = "offline"; return applyFilter(); }
     S.status = "ok";
-    const sig = JSON.stringify(data.items.map((i) => [i.slug, i.poster, i.preview, i.prompt, i.category, i.author, i.duration, i.tags, i.sources, i.links, i.post, i.page]));
+    const sig = JSON.stringify(data.items.map((i) => [i.slug, i.poster, i.preview, i.prompt, i.category, i.author, i.duration, i.title, i.skill, i.tags, i.sources, i.links, i.post, i.page]));
     S.data = data;
     if (sig !== S.sig) {
       S.sig = sig;
@@ -205,7 +216,14 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     drawNote();
   }
 
+  // a card the owner has put into the chat gets a check mark (the gallery stays open: more can be picked)
+  function mark(slug) {
+    S.added.add(slug);
+    const badge = S.cards.get(slug)?.querySelector(".mg-added");
+    if (badge) badge.hidden = false;
+  }
+
   update();
   load();
-  return { node: root, load, update, stop, focus: () => search.focus(), destroy() { stop(); io?.disconnect(); } };
+  return { node: root, load, update, stop, mark, focus: () => search.focus(), destroy() { stop(); io?.disconnect(); } };
 }

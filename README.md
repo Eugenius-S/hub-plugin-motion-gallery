@@ -6,9 +6,10 @@ The interface is in English by default and in Russian when the hub language (`hu
 
 ## How it works
 
-- **The view** is `#/x/motion-gallery` (the ☰ menu). A search field (words must all match the prompt, the author, the category, the tags or the slug), category chips, tag chips and a counter. A card shows the poster, a category · author line, the duration and the start of the prompt; `↗` opens the original post when the entry has one.
+- **The view** is `#/x/motion-gallery` (the ☰ menu). A search field (words must all match the prompt, the author, the category, the tags or the slug), category chips, tag chips and a counter. A card shows the poster, a category · author line, the duration and the start of the prompt; the title (when the entry has one) is bold above the prompt; the arrow in the corner opens the original post when the entry has one.
 - **Hover** plays the preview: muted, looped, one at a time, created only after the mouse rests on a card for a moment and dropped as soon as it leaves (the card goes back to its poster). Posters load lazily, near the screen.
-- **A click** puts the example into a chat input. The view inserts into the chat you opened last; if you have several, pick one in the "Insert into" box at the top. The button before the microphone in the input of any chat opens the gallery over the page and inserts into that very chat. The poster is attached the way a screenshot is, the prompt text is appended to what is already typed.
+- **A click** puts the example into a chat input. The view inserts into the chat you opened last; if you have several, pick one in the "Insert into chat" box at the top (a view has no chat of its own, so the choice is needed there). The poster is attached the way a screenshot is, the prompt text is appended to what is already typed. An entry without a prompt (a skill) puts its description, install lines and repo.
+- **The button before the microphone** in the input of any chat opens the gallery right above that input, without a backdrop: the input stays free and visible, it moves the gallery up as it grows. A click on a card puts the example into that chat at once and the gallery stays open: pick several, keep typing. Picked cards carry a check mark. The cross in the corner, the button again or Escape (in the gallery or in the chat input) closes it.
 - It scales to hundreds of entries: the cards are built once, filters only hide them, previews are never preloaded.
 
 ## The gallery folder
@@ -32,6 +33,7 @@ posters/<slug>.jpg       poster
 ```json
 {
   "slug": "kinetic-type-01",
+  "title": "Kinetic type intro",
   "category": "Kinetic type",
   "author": "Name",
   "duration": 6.5,
@@ -45,7 +47,9 @@ posters/<slug>.jpg       poster
 
 Where an example comes from is optional: `"sources": ["site-a", "site-b"]` (one example can be found in several places) gives a row of source chips to filter by, and `"pages": { "site-a": "https://…", "site-b": "https://…" }` gives the links to the originals (`↗` opens the first one; a plain `post` / `page` still works). `video` is a full-size clip; when `preview` is not set the card plays it.
 
-Only `slug` and one of `preview` / `poster` are required; a field left out falls back to `previews/<slug>.mp4|webm|mov` and `posters/<slug>.jpg|png|webp`. `preview` and `poster` may be a path inside the folder or an `http(s)` URL (a remote poster is fetched by the plugin process, up to 12 MB), so the files can live on any storage. The file is re-read when it changes.
+The shared gallery of Icons8 writes the same things under other names, and they are read too: `id` for `slug`, `seconds` for `duration`, `prompt_note` as a note, `skill` ({desc, install, repo}) for entries that are a skill and not a prompt, `kind` is ignored. The title is searchable; a prompt can be long (up to 40 000 characters).
+
+Only `slug` (or `id`) and one of `preview` / `poster` are required; a field left out falls back to `previews/<slug>.mp4|webm|mov` and `posters/<slug>.jpg|png|webp`. `preview` and `poster` may be a path inside the folder or an `http(s)` URL (a remote poster is fetched by the plugin process, up to 12 MB), so the files can live on any storage. The file is re-read when it changes.
 
 ### Files on the web instead of a folder
 
@@ -55,7 +59,7 @@ If the gallery lives on a storage with a public link, set the base address inste
 { "extensions": { "motion-gallery": { "media_base": "https://storage.example.com/public/gallery/" } } }
 ```
 
-A relative path of `gallery.json` that is not in the folder (`previews/x.mp4`, `posters/x.jpg`, `videos/x.mp4`) is then taken from `<media_base>/<path>`; the browser loads previews straight from there. With a base and no folder, `gallery.json` itself is read from `<media_base>/gallery.json` (kept for a minute). The environment variable `MOTION_GALLERY_BASE` overrides the setting. The plugin ships with no address: a public link is a secret of its owner, put it only in your own `hub.json`.
+A relative path of `gallery.json` that is not in the folder (`previews/x.mp4`, `posters/x.jpg`, `videos/x.mp4`) is then taken from `<media_base>/<path>`; the browser loads previews straight from there. With a base and no folder, `gallery.json` itself is read from `<media_base>/gallery.json` (kept for a minute). The environment variable `MOTION_GALLERY_BASE` overrides the setting. The plugin ships with no address: a public link is a secret of its owner, put it only in your own `hub.json`. A file that is not uploaded yet (a preview, a poster) is not an error: the card stays a calm poster card. Files are fetched by Python first (through the hub proxy, then directly) and, when both fail (for example Python does not trust a certificate that the system does), through `curl`.
 
 ## Safety
 
@@ -73,6 +77,8 @@ Files shown in the grid (posters, previews) are loaded by the browser straight f
 node --test tests/*.test.mjs
 python3 -m unittest discover -s tests
 ```
+
+The icons of the plugin (close, reload, open, check mark) are [Icons8 Material Outlined](https://icons8.com/icons/material-outlined), painted in the text color.
 
 Icon — [3D Fluency](https://icons8.com/icons/3d-fluency) from Icons8.
 

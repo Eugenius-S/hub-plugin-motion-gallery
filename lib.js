@@ -46,7 +46,7 @@ export function matches(item, { q = "", category = "", tags = [], source = "" } 
   if (tags.length && !tags.every((t) => (item.tags || []).includes(t))) return false;
   const words = norm(q).split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const hay = norm([item.prompt, item.slug, item.author, item.category, (item.tags || []).join(" "), (item.sources || []).join(" ")].join("\n"));
+  const hay = norm([item.title, item.prompt, item.slug, item.author, item.category, (item.tags || []).join(" "), (item.sources || []).join(" ")].join("\n"));
   return words.every((w) => hay.includes(w));
 }
 
@@ -62,7 +62,12 @@ export function excerpt(prompt, max = 140) {
 }
 
 // what goes into the chat input as text: the full prompt, nothing else
-export const chatText = (item) => String(item?.prompt || "").trim();
+// (a skill entry has no prompt: its description, the install commands and the repo)
+export function chatText(item) {
+  const p = String(item?.prompt || "").trim();
+  if (p || !item?.skill) return p;
+  return [item.skill.desc, item.skill.install, item.skill.repo].filter(Boolean).join("\n\n");
+}
 
 // the session of an address "#/s/<name>"; anything else - ""
 export function sessionOf(hash) {

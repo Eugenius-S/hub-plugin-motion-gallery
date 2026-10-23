@@ -1,6 +1,7 @@
 import http.client
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -68,6 +69,25 @@ class Normalise(unittest.TestCase):
         self.assertEqual([i["slug"] for i in items], ["r", "ok"])
         self.assertEqual(items[0]["poster"], "https://cdn.test/r.jpg")
         self.assertEqual((items[1]["post"], items[1]["page"]), ("", ""))   # only http(s) links
+
+    def test_the_real_file_format_id_seconds_title_skill(self):
+        """The shared gallery.json has id (not slug), seconds (not duration), title, kind, skill, prompt_note; prompts reach 15k."""
+        long_prompt = "word " * 3000
+        rows = [
+            {"id": "x-1", "sources": ["skillry"], "title": " T ", "author": "A", "category": "", "tags": ["GLSL"], "kind": "Prompt",
+             "prompt": long_prompt, "prompt_note": "Attach the brand image.", "skill": None, "post": "https://x.test/p",
+             "pages": {"skillry": "https://skillry.test/x-1"}, "seconds": 27.6, "video": "videos/x-1.mp4", "preview": "previews/x-1.mp4",
+             "poster": "posters/x-1.jpg"},
+            {"id": "s-1", "kind": "Skill", "prompt": "", "skill": {"desc": "D", "install": "npx skills add a/b", "repo": "https://github.com/a/b"},
+             "seconds": 5, "poster": "posters/s-1.jpg"},
+        ]
+        a, s = server.normalise(self.root, rows, "https://cloud.test/b")
+        self.assertEqual((a["slug"], a["title"], a["duration"], a["note"]), ("x-1", "T", 27.6, "Attach the brand image."))
+        self.assertEqual(len(a["prompt"]), len(long_prompt.strip()), "the prompt is not cut at 4000")
+        self.assertEqual(a["poster"], "https://cloud.test/b/posters/x-1.jpg")
+        self.assertIsNone(a["skill"])
+        self.assertEqual(s["skill"], {"desc": "D", "install": "npx skills add a/b", "repo": "https://github.com/a/b"})
+        self.assertEqual(s["preview"], "")   # no preview file named: a calm poster-only card
 
     def test_slug_is_made_safe(self):
         self.assertEqual(server.normalise(self.root, [{"slug": "a b/../c", "poster": "posters/a.jpg"}])[0]["slug"], "a-b-..-c")
@@ -177,6 +197,115 @@ class Base(unittest.TestCase):
         finally:
             server.fetch_url = orig
             server._remote.clear()
+
+
+@unittest.skipUnless(shutil.which("curl"), "needs curl")
+class CurlFallback(unittest.TestCase):
+    """Python may distrust a certificate that curl trusts (an old Windows store) and the hub proxy may drop it: curl is the last way."""
+    def setUp(self):
+        from http.server import BaseHTTPRequestHandler
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                body = b"x" * 100 if self.path.split("?")[0] == "/ok" else b""
+                self.send_response(200 if body else 404)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.url = "http://127.0.0.1:%d" % self.srv.server_address[1]
+        self._env = {k: os.environ.get(k) for k in ("NO_PROXY", "no_proxy")}
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        self._opener = server.urllib.request.build_opener
+
+        class Dead:
+            def open(self, *a, **k):
+                raise OSError("python cannot reach it")
+        server.urllib.request.build_opener = lambda *a: Dead()
+
+    def tearDown(self):
+        server.urllib.request.build_opener = self._opener
+        for k, v in self._env.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+        self.srv.shutdown()
+        self.srv.server_close()
+
+    def test_curl_answers_when_python_cannot(self):
+        self.assertEqual(server.fetch_url(self.url + "/ok", 1000), (b"x" * 100, ""))
+
+    def test_a_missing_file_and_a_too_big_one_are_none(self):
+        self.assertIsNone(server.fetch_url(self.url + "/missing", 1000))
+        self.assertIsNone(server.fetch_url(self.url + "/ok", 50))
+
+    def logged(self, fn):
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            out = fn()
+        return out, buf.getvalue()
+
+    def test_the_reason_goes_to_the_log_without_the_path(self):
+        out, text = self.logged(lambda: server.fetch_url(self.url + "/ok?token=SECRET", 1000))
+        self.assertEqual(out, (b"x" * 100, ""))
+        self.assertIn("python could not read 127.0.0.1:", text)
+        self.assertIn("OSError: python cannot reach it", text)
+        self.assertNotIn("SECRET", text)
+        out, text = self.logged(lambda: server.fetch_with_curl(self.url + "/missing?token=SECRET", 1000))
+        self.assertIsNone(out)
+        self.assertIn("curl failed", text)
+        self.assertIn("404", text)
+        self.assertNotIn("SECRET", text)
+
+
+class DirectFirst(unittest.TestCase):
+    """The hub proxy drops connections to the gallery host: the first try is direct, never through the proxy."""
+    def test_direct_first_then_curl(self):
+        calls = []
+        orig_open, orig_curl, orig_build = server.urllib.request.OpenerDirector.open, server.fetch_with_curl, server.urllib.request.build_opener
+
+        def build(*handlers):
+            calls.append([type(h).__name__ for h in handlers])
+            return orig_build(*handlers)
+
+        def boom(self, *a, **k):
+            raise OSError("certificate has expired")
+        server.urllib.request.build_opener = build
+        server.urllib.request.OpenerDirector.open = boom
+        server.fetch_with_curl = lambda url, limit: calls.append("curl") or (b"ok", "")
+        try:
+            import contextlib, io
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(server.fetch_url("https://example.invalid/gallery.json", 100), (b"ok", ""))
+        finally:
+            server.urllib.request.build_opener = orig_build
+            server.urllib.request.OpenerDirector.open = orig_open
+            server.fetch_with_curl = orig_curl
+        self.assertEqual(calls, [["ProxyHandler"], "curl"])
+        self.assertIn("certificate has expired", err.getvalue())
+        self.assertIn("trying curl", err.getvalue())
+
+    def test_an_answer_of_the_server_does_not_call_curl(self):
+        import contextlib, io, urllib.error
+        orig_open, orig_curl = server.urllib.request.OpenerDirector.open, server.fetch_with_curl
+
+        def gone(self, *a, **k):
+            raise urllib.error.HTTPError("https://x/y", 404, "Not Found", {}, None)
+        server.urllib.request.OpenerDirector.open = gone
+        server.fetch_with_curl = lambda *a: self.fail("curl must not be called after an HTTP answer")
+        try:
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertIsNone(server.fetch_url("https://x/y", 100))
+        finally:
+            server.urllib.request.OpenerDirector.open = orig_open
+            server.fetch_with_curl = orig_curl
+        self.assertIn("HTTP 404", err.getvalue())
 
 
 class Config(unittest.TestCase):

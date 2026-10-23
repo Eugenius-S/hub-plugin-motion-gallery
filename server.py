@@ -12,10 +12,13 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import signal
+import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote, unquote, urlparse
@@ -95,6 +98,9 @@ def inside(root, rel):
     return real
 
 
+PROMPT_MAX = 40000   # prompts go into the chat whole: the longest real one is about 15k
+
+
 def text(v, limit=4000):
     return v.strip()[:limit] if isinstance(v, str) else ""
 
@@ -103,6 +109,14 @@ def tags_of(v):
     if isinstance(v, str):
         v = re.split(r"[,;]", v)
     return [x.strip() for x in v if isinstance(x, str) and x.strip()][:30] if isinstance(v, list) else []
+
+
+def skill_of(v):
+    """An entry that is a skill, not a prompt: {desc, install, repo} (all text) or None."""
+    if not isinstance(v, dict):
+        return None
+    s = {k: text(v.get(k), 1000) for k in ("desc", "install", "repo")}
+    return s if any(s.values()) else None
 
 
 def duration_of(v):
@@ -153,7 +167,7 @@ def normalise(root, raw, base=""):
     for r in rows if isinstance(rows, list) else []:
         if not isinstance(r, dict):
             continue
-        slug = re.sub(r"[^\w.-]", "-", text(r.get("slug"), 120)).strip("-")
+        slug = re.sub(r"[^\w.-]", "-", text(r.get("slug") or r.get("id"), 120)).strip("-")
         if not slug or slug in seen:
             continue
         video = media(root, base, slug, r.get("video"), "videos", (".mp4", ".webm", ".mov"))
@@ -164,8 +178,8 @@ def normalise(root, raw, base=""):
         seen.add(slug)
         links = links_of(r)
         sources = tags_of(r.get("sources") or r.get("source")) or [l["source"] for l in links if l["source"]]
-        out.append({"slug": slug, "author": text(r.get("author"), 200), "category": text(r.get("category"), 120), "duration": duration_of(r.get("duration")),
-                    "tags": tags_of(r.get("tags")), "prompt": text(r.get("prompt")), "sources": list(dict.fromkeys(sources)), "links": links,
+        out.append({"slug": slug, "author": text(r.get("author"), 200), "category": text(r.get("category"), 120), "duration": duration_of(r.get("duration") or r.get("seconds")),
+                    "title": text(r.get("title"), 200), "note": text(r.get("prompt_note"), 600), "skill": skill_of(r.get("skill")), "tags": tags_of(r.get("tags")), "prompt": text(r.get("prompt"), PROMPT_MAX), "sources": list(dict.fromkeys(sources)), "links": links,
                     "post": text(r.get("post"), 1000) if is_url(r.get("post")) else "", "page": text(r.get("page"), 1000) if is_url(r.get("page")) else "",
                     "preview": preview, "poster": poster})
     return out
@@ -188,7 +202,8 @@ def web_gallery(base):
     got = fetch_url(base + "/" + FILE, 20 * 1024 * 1024)
     try:
         raw = json.loads(got[0].decode("utf-8-sig")) if got else None
-    except ValueError:
+    except ValueError as e:
+        log(f"{url_host(base)}: {FILE} is not JSON ({e})")
         raw = None
     if raw is None:
         if not same:
@@ -232,18 +247,55 @@ _remote = {}   # url -> (time, bytes, mime)
 _remote_lock = threading.Lock()
 
 
+def log(msg):
+    print("motion-gallery: " + msg, file=sys.stderr, flush=True)
+
+
+def fetch_with_curl(url, limit):
+    """The last way: curl (it has its own certificate store and speaks to the hub proxy), (bytes, "") or None."""
+    exe = shutil.which("curl")
+    if not exe:
+        log("curl is not installed, cannot read " + url_host(url))
+        return None
+    try:
+        r = subprocess.run([exe, "-sSfL", "--max-time", "30", "--max-filesize", str(limit), url],
+                           capture_output=True, timeout=40, stdin=subprocess.DEVNULL)
+    except Exception as e:
+        log(f"curl failed for {url_host(url)}: {e}")
+        return None
+    if r.returncode != 0:
+        log(f"curl failed for {url_host(url)}: exit {r.returncode} {r.stderr.decode('utf-8', 'replace').strip()[:200]}")
+        return None
+    if len(r.stdout) > limit:
+        log(f"{url_host(url)}: the file is bigger than {limit} bytes")
+        return None
+    return r.stdout, ""
+
+
+def url_host(url):
+    """The address for the log without its path and query (a public link may carry a token)."""
+    return urlparse(url).netloc or "?"
+
+
 def fetch_url(url, limit):
-    """(bytes, mime) of a remote file or None. Through the system proxy first, directly if that fails (the hub proxy can be flaky)."""
+    """(bytes, mime) of a remote file or None. Directly without a proxy first (the hub proxy drops these connections), then
+    through curl (Python on some machines does not trust the certificate that curl trusts; curl also uses the proxy from the
+    environment). The reason of every failure goes to the log of the process."""
     req = urllib.request.Request(url, headers={"User-Agent": "hub-motion-gallery"})
-    for opener in (urllib.request.build_opener(), urllib.request.build_opener(urllib.request.ProxyHandler({}))):
-        try:
-            with opener.open(req, timeout=15) as r:
-                data = r.read(limit + 1)
-                mime = (r.headers.get("Content-Type") or "").split(";")[0].strip()
-            return None if len(data) > limit else (data, mime)
-        except Exception:
-            continue
-    return None
+    try:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=15) as r:
+            data = r.read(limit + 1)
+            mime = (r.headers.get("Content-Type") or "").split(";")[0].strip()
+        if len(data) > limit:
+            log(f"{url_host(url)}: the file is bigger than {limit} bytes")
+            return None
+        return data, mime
+    except urllib.error.HTTPError as e:   # the server answered: a missing file stays missing, curl would get the same
+        log(f"{url_host(url)}: HTTP {e.code}")
+        return None
+    except Exception as e:
+        log(f"python could not read {url_host(url)} ({type(e).__name__}: {e}); trying curl")
+    return fetch_with_curl(url, limit)
 
 
 def sniff_image(data):
