@@ -426,9 +426,105 @@ class Icon(Sandbox):
         self.assertGreater(r["nav_hover"]["eval"][2], 1.05)
 
 
+@unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
+class Lightbox(Sandbox):
+    """The plus in the corner of a card: the example full screen (video with sound and controls, caption, arrows, Escape, cross)."""
+    def test_plus_opens_the_lightbox_over_the_gallery_over_a_chat(self):
+        card = "'.mg-panel .mg-card'"
+        r = self.run_steps([
+            (None, {"go": self.url + "#/s/b", "init": COLLECT}),
+            (None, {"until": "!!document.querySelector('form.composer .mg-open')", "ms": 10000}),
+            (None, {"eval": "document.querySelector('form.composer .mg-open').click(); 1"}),
+            (None, {"until": "document.querySelectorAll('.mg-panel .mg-card').length >= 8", "ms": 10000}),
+            (None, {"sleep": 800}),
+            ("rest", {"eval": "getComputedStyle(document.querySelector('.mg-panel .mg-card .mg-zoom')).opacity"}),
+            # a held mouse over the card keeps :hover: the plus shows in the top right corner
+            (None, {"drag": ".mg-panel .mg-card", "to": ".mg-panel .mg-card", "keep": True}),
+            (None, {"sleep": 500}),
+            ("hover", {"eval": "(() => { const z = document.querySelector('.mg-panel .mg-card .mg-zoom'), m = z.closest('.mg-media').getBoundingClientRect(), r = z.getBoundingClientRect();"
+                               " return [getComputedStyle(z).opacity, Math.round(m.right - r.right), Math.round(r.top - m.top), document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === z || z.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))]; })()"}),
+            (None, self.shot("card-plus.png")),
+            (None, {"eval": "document.querySelector('.mg-panel .mg-card .mg-zoom').click(); 1"}),
+            ("open", {"until": "!!document.querySelector('.mg-lb video')", "ms": 4000}),
+            (None, {"sleep": 1200}),
+            ("state", {"eval": "(() => { const v = document.querySelector('.mg-lb video'); return [v.controls, v.muted, !!v.src, document.querySelectorAll('form.composer .pchip').length, !!document.querySelector('.mg-panel'),"
+                               " document.querySelector('.mg-lb-count').textContent, document.querySelector('.mg-lb').getAttribute('role'), document.querySelector('.mg-lb-prev').disabled, document.querySelector('.mg-lb-next').disabled]; })()"}),
+            (None, self.shot("lightbox.png", width=1300, height=900)),
+            (None, {"key": "ArrowRight"}),
+            ("right", {"eval": "[document.querySelector('.mg-lb-count').textContent, document.querySelectorAll('.mg-lb video').length, document.querySelector('.mg-lb-prev').disabled]"}),
+            (None, {"key": "ArrowLeft"}),
+            ("left", {"eval": "document.querySelector('.mg-lb-count').textContent"}),
+            (None, {"key": "Escape"}),
+            ("esc", {"until": "!document.querySelector('.mg-lb')", "ms": 3000}),
+            ("panel", {"eval": "[!!document.querySelector('.mg-panel'), document.querySelectorAll('video').length]"}),
+            # the card itself still puts the example into the chat
+            (None, {"eval": "document.querySelectorAll('.mg-panel .mg-card')[1].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })); 1"}),
+            (None, {"until": "document.querySelectorAll('form.composer .pchip').length === 1", "ms": 8000}),
+            # the cross closes it; a filter narrows the list the arrows walk through
+            (None, {"eval": "const s = document.querySelector('.mg-panel .mg-search'); s.value = 'prompt 3:'; s.dispatchEvent(new Event('input')); 1"}),
+            (None, {"eval": "[...document.querySelectorAll('.mg-panel .mg-card')].find(c => !c.hidden).querySelector('.mg-zoom').click(); 1"}),
+            ("filtered", {"until": "!!document.querySelector('.mg-lb video')", "ms": 4000}),
+            ("fcount", {"eval": "[document.querySelector('.mg-lb-count').textContent, document.querySelector('.mg-lb-next').disabled]"}),
+            (None, {"eval": "document.querySelector('.mg-lb-x').click(); 1"}),
+            ("x", {"until": "!document.querySelector('.mg-lb')", "ms": 3000}),
+            ("jserr", {"eval": "window.__mg"}),
+        ])
+        self.assertEqual(r["rest"]["eval"], "0", "the plus shows only on hover")
+        op, right, top, on_top = r["hover"]["eval"]
+        self.assertEqual((op, right, top), ("1", 8, 8), "the plus is in the top right corner of the card")
+        self.assertTrue(on_top, "and the playing preview does not cover it")
+        self.assertTrue(r["open"]["until"], r["open"])
+        controls, muted, has_src, chips, panel, count, role, prev_off, next_off = r["state"]["eval"]
+        self.assertTrue(controls and has_src and not muted, "the video has controls, a source and sound: %s" % r["state"])
+        self.assertEqual((chips, panel), (0, True), "the plus does not put anything into the chat")
+        self.assertRegex(count, r"^1 (of|из) 8$")
+        self.assertEqual((role, prev_off, next_off), ("dialog", True, False))
+        self.assertEqual(r["right"]["eval"][1:], [1, False], "one video at a time, the back arrow is alive: %s" % r["right"])
+        self.assertRegex(r["right"]["eval"][0], r"^2 (of|из) 8$")
+        self.assertRegex(r["left"]["eval"], r"^1 (of|из) 8$")
+        self.assertTrue(r["esc"]["until"], "Escape closes the lightbox")
+        self.assertEqual(r["panel"]["eval"], [True, 0], "and only it: the gallery stays, no video is left playing")
+        self.assertTrue(r["filtered"]["until"])
+        self.assertEqual(r["fcount"]["eval"][1], True, "one card left by the filter: nowhere to step: %s" % r["fcount"])
+        self.assertRegex(r["fcount"]["eval"][0], r"^1 (of|из) 1$")
+        self.assertTrue(r["x"]["until"], "the cross closes it")
+        self.assertEqual(r["jserr"]["eval"], [], "the page threw nothing")
+        self.assertEqual(self.sent(), [])
+
+
+    def test_the_running_man_shows_while_the_list_a_poster_and_a_video_load(self):
+        # a watcher installed before the page scripts: where the runner appeared (it lives only while something loads)
+        watch = ("window.__run = {}; new MutationObserver(() => { for (const [k, sel] of [['note', '.mg-note .mg-run'], ['card', '.mg-media .mg-run'], ['lb', '.mg-lb .mg-run']]) "
+                 "{ const n = document.querySelector(sel); if (n && !window.__run[k]) window.__run[k] = [n.src.split('/').slice(-2).join('/'), n.style.width, getComputedStyle(n).filter]; } })"
+                 ".observe(document, { subtree: true, childList: true });")
+        r = self.run_steps([
+            (None, {"go": self.url + "#/s/b", "init": COLLECT + watch}),
+            (None, {"until": "!!document.querySelector('form.composer .mg-open')", "ms": 10000}),
+            (None, {"eval": "document.querySelector('form.composer .mg-open').click(); 1"}),
+            (None, {"until": "document.querySelectorAll('.mg-panel .mg-card').length >= 8", "ms": 10000}),
+            (None, {"sleep": 1500}),
+            ("left", {"eval": "[document.querySelectorAll('.mg-run').length, document.querySelector('.mg-note').hidden]"}),
+            (None, {"eval": "document.querySelector('.mg-panel .mg-card .mg-zoom').click(); 1"}),
+            (None, {"until": "!!document.querySelector('.mg-lb video')", "ms": 4000}),
+            (None, {"sleep": 1500}),
+            ("lbleft", {"eval": "document.querySelectorAll('.mg-lb .mg-run').length"}),
+            ("seen", {"eval": "window.__run"}),
+            ("jserr", {"eval": "window.__mg"}),
+        ])
+        seen = r["seen"]["eval"]
+        self.assertEqual(r["left"]["eval"][0], 0, "no runner is left on the page when everything has loaded: %s" % r["left"])
+        self.assertEqual(r["lbleft"]["eval"], 0, "the runner leaves the lightbox when the video has data")
+        self.assertIn("card", seen, "a runner showed on a card while its poster loaded: %s" % seen)
+        self.assertEqual(seen["card"][0], "loader/runner-anim.png", seen)
+        self.assertEqual(seen["card"][1], "40px")
+        self.assertEqual(seen["lb"][0], "loader/runner-anim.png", "and over the video in the lightbox: %s" % seen)
+        self.assertIn("invert", seen["lb"][2], "on the dark backdrop the black icon is inverted")
+        self.assertEqual(r["jserr"]["eval"], [], "the page threw nothing")
+
+
 if __name__ == "__main__":
     # Page inherits PageInChrome: only our own tests, not the whole hub e2e suite
-    own = [f"{c.__name__}.{n}" for c in (Page, Ghost, Real, Icon) for n in vars(c) if n.startswith("test_")]
+    own = [f"{c.__name__}.{n}" for c in (Page, Ghost, Real, Icon, Lightbox) for n in vars(c) if n.startswith("test_")]
     names = [a for a in sys.argv[1:] if not a.startswith("-")]
     flags = [a for a in sys.argv[1:] if a.startswith("-")]
     unittest.main(argv=[sys.argv[0], *flags, *(names or own)])

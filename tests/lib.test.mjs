@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { categories, chatText, excerpt, filterItems, fmtDuration, linksOf, matches, mediaUrl, metaLine, posterName, processPort, sessionOf, sourceList, tagList, targets } from "../lib.js";
+import { categories, chatText, excerpt, filterItems, fmtDuration, lightVideo, linksOf, matches, mediaUrl, metaLine, posterName, processPort, sessionOf, sourceList, stepIndex, tagList, targets } from "../lib.js";
 
 const ITEMS = [
   { slug: "a-1", category: "Product", author: "Anna", tags: ["loop", "3d"], prompt: "A glossy bottle spins on a pedestal" },
@@ -109,4 +109,22 @@ test("linksOf: links first, an old post/page as a fallback, only http(s)", () =>
   assert.deepEqual(linksOf({ post: "https://e.com/p", page: "https://e.com/g" }), [{ source: "", url: "https://e.com/p" }, { source: "", url: "https://e.com/g" }]);
   assert.deepEqual(linksOf({ post: "ftp://x" }), []);
   assert.deepEqual(linksOf(null), []);
+});
+
+test("stepIndex stops at the ends, a bad index starts from the first", () => {
+  assert.equal(stepIndex(0, 1, 3), 1);
+  assert.equal(stepIndex(2, 1, 3), 2);
+  assert.equal(stepIndex(0, -1, 3), 0);
+  assert.equal(stepIndex(1, -1, 3), 0);
+  assert.equal(stepIndex(-1, 0, 3), 0);
+  assert.equal(stepIndex(undefined, 1, 3), 1);
+  assert.equal(stepIndex(7, 0, 3), 0);
+  assert.equal(stepIndex(0, 1, 0), -1);
+});
+
+test("lightVideo: the full video, else the preview, else nothing", () => {
+  assert.equal(lightVideo({ video: "/f/v.mp4", preview: "/f/p.mp4" }), "/f/v.mp4");
+  assert.equal(lightVideo({ preview: "/f/p.mp4" }), "/f/p.mp4");
+  assert.equal(lightVideo({ poster: "/f/x.jpg" }), "");
+  assert.equal(lightVideo(null), "");
 });

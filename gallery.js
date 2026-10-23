@@ -2,6 +2,8 @@
 // Many entries are fine: the DOM is built once per list, a filter only hides cards; posters get their address when a card
 // comes near the screen (IntersectionObserver), a video exists only while the mouse is over a card, one at a time.
 import { categories, excerpt, filterItems, fmtDuration, linksOf, mediaUrl, metaLine, sourceList, tagList } from "./lib.js";
+import { closeLightbox, openLightbox } from "./lightbox.js";
+import { isDark, runner } from "./loader.js";
 
 const HOVER_MS = 140;   // the mouse must stay this long: a sweep over the grid starts no video
 
@@ -10,7 +12,7 @@ const HOVER_MS = 140;   // the mouse must stay this long: a sweep over the grid 
 export function createGallery({ el, tr, base, onPick, session = null }) {
   const ico = (name) => { const s = el("span", "mg-ico mg-ico-" + name); s.setAttribute("aria-hidden", "true"); return s; };
   const S ={ data: null, status: "loading", q: "", category: "", source: "", tags: new Set(), cards: new Map(), sig: "", shown: 0, added: new Set() };
-  let cur = null, timer = 0, io = null, toolsSig = "";
+  let cur = null, timer = 0, io = null, toolsSig = "", light = null;
 
   const root = el("div", "mg");
   const search = el("input", "mg-search");
@@ -101,6 +103,14 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     if (body) cap.append(el("div", "mg-prompt", excerpt(body)));
     card.append(media, cap);
     card.title = (item.title ? item.title + "\n" : "") + (body ? body.slice(0, 400) : item.slug);
+    const zoom = el("button", "mg-zoom");
+    zoom.type = "button";
+    zoom.append(ico("plus"));
+    zoom.title = tr("expand");
+    zoom.setAttribute("aria-label", tr("expand"));
+    zoom.addEventListener("click", (e) => { e.stopPropagation(); expand(item); });   // not a pick: nothing goes into the chat
+    zoom.addEventListener("keydown", (e) => e.stopPropagation());
+    media.append(zoom);
     const done = el("span", "mg-added");
     done.append(ico("check"));
     done.hidden = !S.added.has(item.slug);
@@ -108,8 +118,15 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     card.addEventListener("mouseenter", () => { clearTimeout(timer); timer = setTimeout(() => play(card, item), HOVER_MS); });
     card.addEventListener("mouseleave", () => { clearTimeout(timer); if (cur?.card === card) stop(); });
     card.addEventListener("click", (e) => onPick(item, e));
-    card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(item, e); } });
+    card.addEventListener("keydown", (e) => { if (e.target === card && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onPick(item, e); } });
     return card;
+  }
+
+  // the lightbox steps through what the filters show now, in the order of the grid
+  function expand(item) {
+    stop();
+    const shown = (S.data?.items || []).filter((i) => !S.cards.get(i.slug)?.hidden);
+    light = openLightbox({ el, tr, base, items: shown, index: shown.indexOf(item), onClose: () => { light = null; } });
   }
 
   function observe() {
@@ -118,7 +135,15 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
       for (const h of hits) {
         if (!h.isIntersecting) continue;
         const img = h.target;
-        if (img.dataset.src && !img.src) img.src = img.dataset.src;
+        if (img.dataset.src && !img.src) {
+          // the running man stays on the card from the moment the poster is asked until it is drawn
+          const run = runner(el, 40);
+          const done = () => run.remove();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+          img.after(run);
+          img.src = img.dataset.src;
+        }
         io.unobserve(img);
       }
     }, { rootMargin: "400px 0px" });
@@ -157,10 +182,20 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
   function drawNote() {
     const items = S.data?.items || [];
     count.textContent = items.length ? tr("count", { n: S.shown, total: items.length }) : "";
-    if (S.status === "ok" && items.length && !S.shown) note.textContent = tr("no_match");
-    else if (S.status === "ok" && !items.length) note.textContent = S.data?.ready ? tr("empty") : S.data?.configured ? tr("no_file") : tr("not_set");
-    else note.textContent = { loading: tr("loading"), offline: tr("offline"), nolocal: tr("local_only") }[S.status] || "";
-    note.hidden = !note.textContent;
+    let text = "";
+    if (S.status === "ok" && items.length && !S.shown) text = tr("no_match");
+    else if (S.status === "ok" && !items.length) text = S.data?.ready ? tr("empty") : S.data?.configured ? tr("no_file") : tr("not_set");
+    else text = { loading: tr("loading"), offline: tr("offline"), nolocal: tr("local_only") }[S.status] || "";
+    // while gallery.json loads: the running man above the text; rebuilt only when the note changes (this runs on every snapshot
+    // and must not restart the animation)
+    const run = S.status === "loading" && !items.length;
+    const sig = (run ? "run:" : "") + text;
+    if (note.dataset.sig !== sig) {
+      note.dataset.sig = sig;
+      note.textContent = text;
+      if (run) note.prepend(runner(el, 56));
+    }
+    note.hidden = !text;
   }
 
   function applyFilter() {
@@ -182,7 +217,7 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     } catch { /* the process is not up */ }
     if (!data || !Array.isArray(data.items)) { S.status = "offline"; return applyFilter(); }
     S.status = "ok";
-    const sig = JSON.stringify(data.items.map((i) => [i.slug, i.poster, i.preview, i.prompt, i.category, i.author, i.duration, i.title, i.skill, i.tags, i.sources, i.links, i.post, i.page]));
+    const sig = JSON.stringify(data.items.map((i) => [i.slug, i.poster, i.preview, i.video, i.prompt, i.category, i.author, i.duration, i.title, i.skill, i.tags, i.sources, i.links, i.post, i.page]));
     S.data = data;
     if (sig !== S.sig) {
       S.sig = sig;
@@ -203,6 +238,7 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     reload.title = tr("reload");
     reload.setAttribute("aria-label", tr("reload"));
     pickLbl.textContent = tr("insert_into");
+    root.classList.toggle("mg-dark", isDark());
     if (session) {
       const names = session.list(), last = session.get();
       const sig = names.join("\n") + "\u0000" + last;
@@ -225,5 +261,5 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
 
   update();
   load();
-  return { node: root, load, update, stop, mark, focus: () => search.focus(), destroy() { stop(); io?.disconnect(); } };
+  return { node: root, load, update, stop, mark, focus: () => search.focus(), destroy() { stop(); if (light) closeLightbox(); io?.disconnect(); } };
 }

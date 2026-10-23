@@ -85,9 +85,11 @@ class Normalise(unittest.TestCase):
         self.assertEqual((a["slug"], a["title"], a["duration"], a["note"]), ("x-1", "T", 27.6, "Attach the brand image."))
         self.assertEqual(len(a["prompt"]), len(long_prompt.strip()), "the prompt is not cut at 4000")
         self.assertEqual(a["poster"], "https://cloud.test/b/posters/x-1.jpg")
+        self.assertEqual((a["video"], a["preview"]), ("https://cloud.test/b/videos/x-1.mp4", "https://cloud.test/b/previews/x-1.mp4"))   # the lightbox plays the full video
         self.assertIsNone(a["skill"])
         self.assertEqual(s["skill"], {"desc": "D", "install": "npx skills add a/b", "repo": "https://github.com/a/b"})
         self.assertEqual(s["preview"], "")   # no preview file named: a calm poster-only card
+        self.assertEqual(s["video"], "")
 
     def test_slug_is_made_safe(self):
         self.assertEqual(server.normalise(self.root, [{"slug": "a b/../c", "poster": "posters/a.jpg"}])[0]["slug"], "a-b-..-c")
@@ -115,6 +117,7 @@ class Base(unittest.TestCase):
         rows = [{"slug": "v", "video": "videos/v.mp4", "poster": "../x.jpg"}]
         (v,) = server.normalise(None, rows, "https://cloud.test/b")
         self.assertEqual((v["preview"], v["poster"]), ("https://cloud.test/b/videos/v.mp4", ""))
+        self.assertEqual(v["video"], v["preview"])   # only a video named: the same file serves the lightbox
 
     def test_sources_and_links(self):
         rows = [{"slug": "a", "poster": "posters/a.jpg", "sources": ["skillry", "remotion"],

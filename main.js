@@ -28,6 +28,11 @@ const STR = {
     no_poster: "The poster did not load: only the prompt was put in.",
     no_chat: "The chat input did not open: choose a chat and try again.",
     close: "Close",
+    expand: "View full screen",
+    prev: "Previous example",
+    next: "Next example",
+    no_video: "This example has no video, only a poster.",
+    video_failed: "The video did not load.",
   },
   ru: {
     subtitle: "примеры движения: наведи, и играет; клик кладёт в чат",
@@ -49,6 +54,11 @@ const STR = {
     no_poster: "Постер не загрузился: вставлен только промт.",
     no_chat: "Поле ввода чата не открылось: выберите чат и повторите.",
     close: "Закрыть",
+    expand: "Открыть на весь экран",
+    prev: "Предыдущий пример",
+    next: "Следующий пример",
+    no_video: "У примера нет видео, только постер.",
+    video_failed: "Видео не загрузилось.",
   },
 };
 const tr = makeT(STR);

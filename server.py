@@ -181,7 +181,7 @@ def normalise(root, raw, base=""):
         out.append({"slug": slug, "author": text(r.get("author"), 200), "category": text(r.get("category"), 120), "duration": duration_of(r.get("duration") or r.get("seconds")),
                     "title": text(r.get("title"), 200), "note": text(r.get("prompt_note"), 600), "skill": skill_of(r.get("skill")), "tags": tags_of(r.get("tags")), "prompt": text(r.get("prompt"), PROMPT_MAX), "sources": list(dict.fromkeys(sources)), "links": links,
                     "post": text(r.get("post"), 1000) if is_url(r.get("post")) else "", "page": text(r.get("page"), 1000) if is_url(r.get("page")) else "",
-                    "preview": preview, "poster": poster})
+                    "preview": preview, "video": video or preview, "poster": poster})
     return out
 
 

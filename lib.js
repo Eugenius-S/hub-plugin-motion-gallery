@@ -88,3 +88,13 @@ export const posterName = (item, mime) => `${String(item.slug || "example").repl
 
 // the address of a process answer: relative paths ("/f/…") belong to the process, URLs stay as they are
 export const mediaUrl = (base, src) => (!src ? "" : /^https?:\/\//i.test(src) ? src : base + src);
+
+// the lightbox: the index after a step, stopping at the ends (like a photo viewer); a missing index - the first
+export function stepIndex(i, delta, n) {
+  if (!(n > 0)) return -1;
+  const at = Number.isInteger(i) && i >= 0 && i < n ? i : 0;
+  return Math.min(n - 1, Math.max(0, at + delta));
+}
+
+// what the lightbox plays: the full video, else the preview; "" - the entry has no video at all
+export const lightVideo = (item) => item?.video || item?.preview || "";
