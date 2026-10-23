@@ -9,6 +9,9 @@ set - an empty gallery with a hint. Relative paths of gallery.json that are not 
   /poster/<slug>  the poster as bytes: a file, or a remote URL fetched here (the page can not read a foreign image)
   POST /delete    {slug}: takes the example out of gallery.json and deletes its files (folder, or WebDAV behind media_base);
                   settings allow_delete (default on), dav_login, dav_folder; the page asks only after its undo time ran out
+  /lib/<path>     a file of the downloads (<state>/motion-gallery/library), the same way as /f/
+  GET/POST /fetch the settings tab: the links, the question of the first start, the download (linkctl.py); the downloads are
+                  merged into /gallery.json in every mode
 """
 import json
 import mimetypes
@@ -25,6 +28,10 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote, unquote, urlparse
 
+import fetcher
+import linkctl
+import links as linkmem
+import tgpost
 from remove import take_out
 
 WEB_PORT = int(os.environ.get("HUB_WEB_PORT") or 8787)
@@ -131,22 +138,22 @@ def duration_of(v):
         return 0
 
 
-def media(root, base, slug, value, folder, exts):
-    """Address of a preview or poster: a URL as is; a file of the folder as /f/<path>; else <base>/<path>.
+def media(root, base, slug, value, folder, exts, prefix="/f/"):
+    """Address of a preview or poster: a URL as is; a file of the folder as <prefix><path>; else <base>/<path>.
     No value - <folder>/<slug>.<ext> in the folder if it exists."""
     value = text(value, 1000)
     if is_url(value):
         return value
     rel = value.replace("\\", "/").lstrip("/")
     if value and root and inside(root, value):
-        return "/f/" + quote(rel, safe="/")
+        return prefix + quote(rel, safe="/")
     if value and base and rel and not any(p == ".." for p in rel.split("/")):
         return base + "/" + quote(rel, safe="/")
     if not value and root:
         for ext in exts:
             rel = f"{folder}/{slug}{ext}"
             if inside(root, rel):
-                return "/f/" + quote(rel, safe="/")
+                return prefix + quote(rel, safe="/")
     return ""
 
 
@@ -168,8 +175,9 @@ def slug_of(r):
     return re.sub(r"[^\w.-]", "-", text(r.get("slug") or r.get("id"), 120)).strip("-")
 
 
-def normalise(root, raw, base=""):
-    """gallery.json (a list or {items: [...]}) -> the entries the page draws. Entries without a slug or without any picture are dropped."""
+def normalise(root, raw, base="", prefix="/f/"):
+    """gallery.json (a list or {items: [...]}) -> the entries the page draws. Entries without a slug or without any picture are dropped.
+    prefix - where the files of root are served (/f/ the gallery folder, /lib/ the downloads)."""
     rows = raw.get("items") if isinstance(raw, dict) else raw
     out, seen = [], set()
     for r in rows if isinstance(rows, list) else []:
@@ -178,9 +186,9 @@ def normalise(root, raw, base=""):
         slug = slug_of(r)
         if not slug or slug in seen:
             continue
-        video = media(root, base, slug, r.get("video"), "videos", (".mp4", ".webm", ".mov"))
-        preview = media(root, base, slug, r.get("preview"), "previews", (".mp4", ".webm", ".mov")) or video
-        poster = media(root, base, slug, r.get("poster"), "posters", (".jpg", ".jpeg", ".png", ".webp"))
+        video = media(root, base, slug, r.get("video"), "videos", (".mp4", ".webm", ".mov"), prefix)
+        preview = media(root, base, slug, r.get("preview"), "previews", (".mp4", ".webm", ".mov"), prefix) or video
+        poster = media(root, base, slug, r.get("poster"), "posters", (".jpg", ".jpeg", ".png", ".webp"), prefix)
         if not preview and not poster:
             continue
         seen.add(slug)
@@ -222,8 +230,52 @@ def web_gallery(base):
     return raw
 
 
+def plugin_dir():
+    """The own folder of the plugin in the hub state (the memory of the links, the downloads)."""
+    return os.path.join(state_dir(), NAME)
+
+
+def library_root():
+    """The folder of what the downloader brought (<state>/motion-gallery/library) once it has a gallery.json, else None."""
+    root = os.path.realpath(fetcher.library(plugin_dir()))
+    return root if os.path.isfile(os.path.join(root, FILE)) else None
+
+
+_lib = {"sig": None, "items": []}
+_merged = {"key": None, "data": None}
+
+
+def library_items():
+    """The entries of the downloads (files are served as /lib/<path>); kept until gallery.json of the library changes."""
+    root = library_root()
+    if not root:
+        return []
+    try:
+        st = os.stat(os.path.join(root, FILE))
+        sig = (root, st.st_mtime_ns, st.st_size)
+        if _lib["sig"] != sig:
+            with open(os.path.join(root, FILE), encoding="utf-8-sig") as f:
+                _lib.update(sig=sig, items=normalise(root, json.load(f), "", "/lib/"))
+    except (OSError, ValueError):
+        return _lib["items"] if _lib["sig"] else []
+    return _lib["items"]
+
+
 def load():
-    """{configured, ready, items}: configured - a folder or a base is set in the settings, ready - gallery.json is readable."""
+    """{configured, ready, items}: the gallery of the settings (load_main) plus what the downloader brought (library_items): the downloads
+    are shown in every mode, the same slug in the gallery wins."""
+    main, lib = load_main(), library_items()
+    if not lib:
+        return main
+    key = (id(main), id(main["items"]), id(lib))
+    if _merged["key"] != key:
+        have = {i["slug"] for i in main["items"]}
+        _merged.update(key=key, data={"configured": True, "ready": True, "items": [i for i in lib if i["slug"] not in have] + main["items"]})
+    return _merged["data"]
+
+
+def load_main():
+    """The gallery of the settings: {configured, ready, items}: configured - a folder or a base is set, ready - gallery.json is readable."""
     root, base = gallery_dir(), media_base()
     if not root:
         folder = setting("gallery_dir", "MOTION_GALLERY_DIR")
@@ -274,7 +326,8 @@ def can_delete():
     if root:
         return os.access(os.path.join(root, FILE), os.W_OK)
     if setting("gallery_dir", "MOTION_GALLERY_DIR") or not media_base():
-        return False
+        lib = library_root()   # no gallery of its own: the downloads can still be taken out
+        return bool(lib) and os.access(os.path.join(lib, FILE), os.W_OK)
     try:
         return make_dav() is not None
     except Exception:
@@ -357,8 +410,11 @@ def remove_entry(slug):
     if not slug:
         raise Refused(400, "no slug")
     with _delete_lock:
-        root, base = gallery_dir(), media_base()
-        if root:
+        root, base, lib = gallery_dir(), media_base(), library_root()
+        in_main = slug in {i["slug"] for i in load_main()["items"]}
+        if lib and not in_main and slug in {i["slug"] for i in library_items()}:   # a download: its own folder, not the gallery
+            out = remove_from_folder(lib, slug)
+        elif root:
             out = remove_from_folder(root, slug)
         elif base and not setting("gallery_dir", "MOTION_GALLERY_DIR"):
             out = remove_from_storage(base, slug)
@@ -498,8 +554,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.say(200, {**load(), "can_delete": can_delete()}, extra) if extra else self.say(403, {"error": "origin"})
         if url.path.startswith("/poster/"):
             return self.poster(unquote(url.path[len("/poster/"):]), extra)
+        if url.path == "/fetch":   # the settings tab: links, question of the first start, progress of the download
+            if not extra:
+                return self.say(403, {"error": "origin"})
+            return self.say(200, CTL.status(), extra) if CTL else self.say(503, {"error": "starting"}, extra)
         if url.path.startswith("/f/"):
             return self.file(unquote(url.path[3:]), extra)
+        if url.path.startswith("/lib/"):
+            return self.file(unquote(url.path[5:]), extra, True)
         return self.say(404, {"error": "no page"})
 
     do_HEAD = do_GET
@@ -509,7 +571,10 @@ class Handler(BaseHTTPRequestHandler):
         extra = self.cors()
         if bad or not extra:   # only the hub page may ask for a change
             return self.say(403, {"error": bad or "origin"})
-        if urlparse(self.path).path != "/delete":
+        path = urlparse(self.path).path
+        if path == "/fetch":
+            return self.fetch_post(extra)
+        if path != "/delete":
             return self.say(404, {"error": "no page"}, extra)
         try:
             size = int(self.headers.get("Content-Length") or 0)
@@ -527,6 +592,24 @@ class Handler(BaseHTTPRequestHandler):
             log(f"delete {slug}: {type(e).__name__}")
             return self.say(502, {"error": "storage failed"}, extra)
 
+    def fetch_post(self, extra):
+        """POST /fetch {action, ...}: see linkctl.Ctl.act. The estimate (plan) reads the sources over the net: it may take a while."""
+        if not CTL:
+            return self.say(503, {"error": "starting"}, extra)
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(size).decode("utf-8")) if 0 < size <= 16384 else None
+        except (ValueError, OSError):
+            body = None
+        if not isinstance(body, dict):
+            return self.say(400, {"error": "body"}, extra)
+        try:
+            code, out = CTL.act(body)
+        except Exception as e:   # a source that is down must not take the process with it
+            log(f"fetch {body.get('action')}: {type(e).__name__}: {e}")
+            return self.say(502, {"error": "failed"}, extra)
+        return self.say(code, out, extra)
+
     def poster(self, slug, extra):
         item = next((i for i in load()["items"] if i["slug"] == slug), None)
         src = (item or {}).get("poster") or ""
@@ -541,10 +624,12 @@ class Handler(BaseHTTPRequestHandler):
             if self.command != "HEAD":
                 self.wfile.write(data)
             return
+        if src.startswith("/lib/"):
+            return self.file(unquote(src[5:]), extra, True)
         return self.file(unquote(src[3:]), extra)
 
-    def file(self, rel, extra):
-        root = gallery_dir()
+    def file(self, rel, extra, lib=False):
+        root = library_root() if lib else gallery_dir()
         real = inside(root, rel) if root else None
         mime = MEDIA.get(os.path.splitext(real or "")[1].lower()) if real else None
         if not real or not mime:
@@ -581,13 +666,36 @@ class Handler(BaseHTTPRequestHandler):
             pass   # the page left (hover ended): not an error
 
 
+CTL = None   # linkctl.Ctl: the links, the downloader, the question of the first start (set by main(); tests set it themselves)
+
+
+def notify(kind, data):
+    """A fact for the hub (owner.notify at the end of a download, telegram.unpost of the answered question): through the spool of the core.
+    No core nearby (the plugin runs by itself) - only the log."""
+    try:
+        from core import spool
+        spool.put(os.path.join(state_dir(), "spool"), kind, None, data, src=f"ext:{NAME}")
+    except Exception as e:
+        log(f"{kind} not sent ({type(e).__name__})")
+
+
+def make_ctl():
+    root = plugin_dir()
+    return linkctl.Ctl(linkmem.Links(os.path.join(root, linkmem.NAME)), fetcher.Fetcher(root), notify=notify,
+                       configured=lambda: bool(setting("gallery_dir", "MOTION_GALLERY_DIR") or media_base()))
+
+
 def main():
+    global CTL
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError as e:
         print(f"motion-gallery: port {PORT} (hub page port + 12) is busy: {e}", file=sys.stderr, flush=True)
         return 1
     srv.daemon_threads = True
+    CTL = make_ctl()
+    CTL.startup()   # puts the links by default (once) and asks the question of the first start: nothing is downloaded before the answer
+    threading.Thread(target=tgpost.run, args=(state_dir(), lambda: CTL), daemon=True).start()
     print(f"motion-gallery: http://127.0.0.1:{PORT}", flush=True)
 
     def stop(*_):

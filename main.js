@@ -3,10 +3,12 @@
 // links to its video and preview travel with the message (insert.js). Two ways in: the view in the
 // menu (inserts into the last opened chat, or the one chosen at the top) and a button in the input of any chat (the gallery
 // opens over the page and inserts into that chat). Files are served by the plugin process (server.py).
+import { createFetchUi, t as tf } from "./fetchui.js";
+import { createFirstRun } from "./firstrun.js";
 import { createGallery } from "./gallery.js";
 import { makeT, setLangSource } from "./i18n.js";
 import { insertTag, interceptSend, tagsOf, waitComposer } from "./insert.js";
-import { chatText, linksOf, mediaUrl, processPort, sessionOf, tagFor, targets } from "./lib.js";
+import { ASK_TTL, chatText, hubName, installText, lacking, linksOf, mediaUrl, processPort, sessionOf, tagFor, targets } from "./lib.js";
 
 const STR = {
   en: {
@@ -20,9 +22,10 @@ const STR = {
     count: "{n} of {total}",
     open_post: "Open the original post",
     loading: "Loading…",
-    empty: "The gallery has no examples yet. Add entries to gallery.json in the gallery folder.",
+    empty: "The gallery has no examples yet. Download them: Settings → Motion Gallery: sources.",
     no_file: "gallery.json is not readable: not in the gallery folder, or not at the media_base address (a dead link, no access). Check the setting and reload.",
-    not_set: "No gallery set. In hub.json set extensions → motion-gallery → gallery_dir (a folder with gallery.json, previews/ and posters/) or media_base (a public link to such files), then reload.",
+    not_set: "No examples yet. Download them: Settings → Motion Gallery: sources (or point the gallery at a folder or a link in hub.json: extensions → motion-gallery → gallery_dir or media_base).",
+    not_sent: "The request to the hub was not sent: {err}",
     no_match: "Nothing matches the search.",
     offline: "The plugin process is not responding. Restart the plugin: hub restart ext:<account>:motion-gallery",
     local_only: "Motion Gallery works only on this computer: open the hub via localhost.",
@@ -51,9 +54,10 @@ const STR = {
     count: "{n} из {total}",
     open_post: "Открыть исходный пост",
     loading: "Загрузка…",
-    empty: "В галерее пока нет примеров. Добавьте записи в gallery.json в папке галереи.",
+    empty: "В галерее пока нет примеров. Скачайте их: Настройки → Motion Gallery: источники.",
     no_file: "gallery.json не читается: нет в папке галереи или по адресу media_base (ссылка не отвечает или нет доступа). Проверьте настройку и обновите.",
-    not_set: "Галерея не задана. В hub.json укажите extensions → motion-gallery → gallery_dir (папка с gallery.json, previews/ и posters/) или media_base (публичная ссылка на такие файлы) и обновите.",
+    not_set: "Примеров пока нет. Скачайте их: Настройки → Motion Gallery: источники (или укажите в hub.json папку или ссылку: extensions → motion-gallery → gallery_dir или media_base).",
+    not_sent: "Запрос хабу не отправлен: {err}",
     no_match: "По запросу ничего не найдено.",
     offline: "Процесс плагина не отвечает. Перезапустите плагин: hub restart ext:<аккаунт>:motion-gallery",
     local_only: "Галерея движения работает только на этом компьютере: откройте хаб через localhost.",
@@ -74,6 +78,7 @@ const STR = {
 };
 const tr = makeT(STR);
 const ID = "motion-gallery";
+const ASKED = "motion-gallery:asked";   // agents asked from the hub (localStorage): name -> when; "Install" waits ASK_TTL before it asks again
 const LAST = "motion-gallery:last";   // the chat opened last (localStorage): the page may start right on this view
 
 let hub = null;
@@ -88,6 +93,23 @@ const sessions = () => (hub.snapshot()?.sessions || []);
 function remember(hash) {
   const name = sessionOf(hash);
   if (name) try { localStorage.setItem(LAST, name); } catch { /* storage is off */ }
+}
+
+const askedAt = () => { try { return JSON.parse(localStorage.getItem(ASKED) || "{}") || {}; } catch { return {}; } };
+const lackNow = () => lacking(hub.snapshot()?.sessions || [], askedAt());
+// "Install": a message to the hub from the owner - only the hub or the owner installs agents; the row waits until the session appears in the snapshot
+async function install(name) {
+  const asked = askedAt();
+  if (asked[name] && Date.now() - asked[name] < ASK_TTL) return;
+  const save = (v) => { try { localStorage.setItem(ASKED, JSON.stringify(v)); } catch { /* storage is off */ } };
+  save({ ...asked, [name]: Date.now() });
+  const r = await hub.post("/api/send", { session: hubName(sessions()), text: installText(name), action: true });
+  if (r && r.error) {
+    const back = askedAt();
+    delete back[name];
+    save(back);
+    toast(tr("not_sent", { err: r.error }));
+  }
 }
 
 let toastTimer = 0;
@@ -252,6 +274,12 @@ export default function register(h) {
   hub.addStyle("style.css");
   interceptSend();
   hub.addStyle("navicon.css");   // the icon turns filled with a gradient on hover (the menu and the input button)
+  // the question of the first start (what is preinstalled, how long and how much the download takes): a card over the page until it is answered; in Telegram too
+  const first = createFirstRun({ hub, base, local, agents: lackNow, install });
+  document.body.append(first.node);
+  first.refresh();
+  const fetchUi = createFetchUi({ hub, base, local, onAdded: () => { main?.load(); over?.g.load(); }, onAgain: () => first.refresh() });
+  hub.addSettings({ id: "sources", title: tf("title"), render: (root) => fetchUi.render(root) });
   remember(location.hash);
   addEventListener("hashchange", () => remember(location.hash));
   hub.addView({

@@ -144,3 +144,15 @@ export function stepIndex(i, delta, n) {
 
 // what the lightbox plays: the full video, else the preview; "" - the entry has no video at all
 export const lightVideo = (item) => item?.video || item?.preview || "";
+
+// ---- agents Motion Gallery works with: without them the examples have nobody to turn into a script or a video. One list (the same names as
+// firstrun.AGENTS in firstrun.py); installed from the specialists catalog by a message to the hub (`specialists install <name>`).
+export const NEEDED = ["screenwriter", "moviemaker"];
+export const ASK_TTL = 30 * 60 * 1000;   // "asked the hub" lasts this long, then "Install" again
+export const installText = (name) => `specialists install ${name}`;
+export const hubName = (sessions) => ((sessions || []).find((s) => s.kind === "hub") || {}).name || "hub";
+// who is missing from the hub: [{name, state}] with state "ask" (can be asked) or "wait" (asked, waiting - until the session appears in the snapshot)
+export function lacking(sessions, asked = {}, now = Date.now(), needed = NEEDED) {
+  const have = new Set((sessions || []).filter((s) => s.kind !== "hub").map((s) => s.name));
+  return needed.filter((n) => !have.has(n)).map((name) => ({ name, state: asked[name] && now - asked[name] < ASK_TTL ? "wait" : "ask" }));
+}

@@ -18,3 +18,6 @@ export function makeT(STR) {
     return vars ? String(text).replace(/\{(\w+)\}/g, (m, k) => (Object.hasOwn(vars, k) ? vars[k] : m)) : text;
   };
 }
+
+// the hub language as set now ("ru", "en-GB" -> "en"); read at use time
+export const currentLang = () => baseLang(source()) || "en";

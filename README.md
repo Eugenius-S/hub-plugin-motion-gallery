@@ -14,6 +14,28 @@ The interface is in English by default and in Russian when the hub language (`hu
 - **While something loads** a running man (the Icons8 "Running" icon, an animated PNG that ships inside the plugin, `loader/`) shows up: under the list while `gallery.json` is read, on a card while its poster loads and over the video in the viewer. Under the list (the first load) it is 40 px; elsewhere 20 px, white in a round black plate over a picture or a video. With reduced motion in the system settings it is a still frame of the same icon; in the dark theme it is inverted. Nothing is fetched from outside for it. Icon: [Icons8](https://icons8.com/icon/yfKaq82wFEAc/running).
 - It scales to hundreds of entries: the cards are built once, filters only hide them, previews are never preloaded.
 
+## Sources and the downloader (0.4.0)
+
+The gallery can fill itself. Settings → **Motion Gallery: sources** holds the links the plugin downloads from; they are remembered (up to 40), you can add your own and remove any. Eight sources of motion references come preinstalled (a link you remove does not come back).
+
+| Source | Reader |
+| --- | --- |
+| skillry.dev (AI videos) | yes: video, poster, title, install lines |
+| prompt-motion.com | yes: video, poster, prompt, tags |
+| claude-motion.com (gallery) | yes: video, poster, prompt |
+| remotion.dev (prompts) | no parser yet |
+| 4 GitHub repositories | no parser yet |
+
+A link without a reader is named in the estimate and skipped, nothing breaks.
+
+**Paste a link, press "Download".** First the plugin counts: how many new examples (up to 30 per link, the ones already in the library are not counted), how big (the real `Content-Length` of a few videos, the average for the rest; exact for a short list) and how long. Then it asks: "Examples: N. About X GB (estimate). Compress the video?" with **Compress** (ffmpeg, H.264 at 1280 px, shows the expected size; the smaller of the original and the compressed file is kept), **As is** and **Cancel**. Without ffmpeg it says so and offers "As is" only. The work runs in the background with a progress bar and a stop button; when it ends, the hub gets a notice (`owner.notify`). Downloaded videos, posters and prompts are in `<state>/motion-gallery/library/` (`gallery.json`, `videos/`, `posters/`), served at `/lib/…` and merged into the gallery at once; they never overwrite your own folder or `media_base`.
+
+### The first question
+
+On the first enable nothing is downloaded. A card over the page asks once: how many sources are preinstalled, an estimate of the disk space and the time, and three answers: **Download** / **Don't download** / **I'll change it in the settings**. The same question goes to Telegram as a post with three buttons (when the hub's Telegram has the `telegram.post` fact); the first answer from either place settles it, and a page answer erases the Telegram post (`telegram.unpost`). The answer is stored in the plugin state (`links.json`) and the question is not asked twice; Settings → Motion Gallery: sources can show it again. Hubs that already point at a gallery (`gallery_dir`, `media_base`) are not asked.
+
+The card also names the agents the gallery works with: **screenwriter** (ideas and scripts from the examples) and **moviemaker** (assembles the video in After Effects). When the hub does not have one, the card gives an "Install" button: it sends the hub `specialists install <name>` (the specialists catalog; the hub decides).
+
 ## The gallery folder
 
 Set the folder in `hub.json`; until it is set the view is empty and says so:
@@ -86,7 +108,7 @@ Files shown in the grid (posters, previews) are loaded by the browser straight f
 
 ```
 node --test tests/*.test.mjs
-python3 -m unittest discover -s tests
+PYTHONPATH=<hub code> python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
 The icons of the plugin (close, reload, open, check mark, the view and the input button) are [Icons8 Material](https://icons8.com/icons/material-outlined): outlined, and filled (`icon-filled.svg`) for the hover, where the icon turns filled with a pink/primary gradient (`navicon.css`); with reduced motion it stays still.
