@@ -19,39 +19,63 @@
 }
 :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::after {
   -webkit-mask-image: url("icon-filled.svg"); mask-image: url("icon-filled.svg"); opacity: 0;
-  --mgi-w1: calc(8% + (100% - var(--mgi-r1)) * .3);
+  --mgi-w1: calc(10% + (100% - var(--mgi-r1)) * .34);
   --mgi-a1: min(calc(var(--mgi-r1) * 12), calc((100% - var(--mgi-r1)) * 2.4), 100%);
-  --mgi-w2: calc(8% + (100% - var(--mgi-r2)) * .3);
+  --mgi-w2: calc(10% + (100% - var(--mgi-r2)) * .34);
   --mgi-a2: min(calc(var(--mgi-r2) * 12), calc((100% - var(--mgi-r2)) * 2.4), 100%);
-  --mgi-w3: calc(8% + (100% - var(--mgi-r3)) * .3);
+  --mgi-w3: calc(10% + (100% - var(--mgi-r3)) * .34);
   --mgi-a3: min(calc(var(--mgi-r3) * 12), calc((100% - var(--mgi-r3)) * 2.4), 100%);
   background:
     radial-gradient(circle closest-side at 50% 50%,
-      transparent calc(var(--mgi-r1) - var(--mgi-w1)),
-      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * .3), transparent) calc(var(--mgi-r1) - var(--mgi-w1) * .5),
+      transparent calc(var(--mgi-r1) + var(--mgi-w1) * -1.400),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * 0.07), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * -1.167),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * 0.25), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * -0.933),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * 0.50), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * -0.700),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * 0.75), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * -0.467),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * 0.93), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * -0.233),
       color-mix(in oklab, var(--mgi-pink) var(--mgi-a1), transparent) var(--mgi-r1),
-      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * .25), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * .35),
-      transparent calc(var(--mgi-r1) + var(--mgi-w1) * .7)),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * 0.93), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * 0.183),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * 0.75), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * 0.367),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * 0.50), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * 0.550),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * 0.25), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * 0.733),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * 0.07), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * 0.917),
+      transparent calc(var(--mgi-r1) + var(--mgi-w1) * 1.100)),
     radial-gradient(circle closest-side at 50% 50%,
-      transparent calc(var(--mgi-r2) - var(--mgi-w2)),
-      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * .3), transparent) calc(var(--mgi-r2) - var(--mgi-w2) * .5),
+      transparent calc(var(--mgi-r2) + var(--mgi-w2) * -1.400),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * 0.07), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * -1.167),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * 0.25), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * -0.933),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * 0.50), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * -0.700),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * 0.75), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * -0.467),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * 0.93), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * -0.233),
       color-mix(in oklab, var(--mgi-pink) var(--mgi-a2), transparent) var(--mgi-r2),
-      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * .25), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * .35),
-      transparent calc(var(--mgi-r2) + var(--mgi-w2) * .7)),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * 0.93), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * 0.183),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * 0.75), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * 0.367),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * 0.50), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * 0.550),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * 0.25), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * 0.733),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * 0.07), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * 0.917),
+      transparent calc(var(--mgi-r2) + var(--mgi-w2) * 1.100)),
     radial-gradient(circle closest-side at 50% 50%,
-      transparent calc(var(--mgi-r3) - var(--mgi-w3)),
-      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * .3), transparent) calc(var(--mgi-r3) - var(--mgi-w3) * .5),
+      transparent calc(var(--mgi-r3) + var(--mgi-w3) * -1.400),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * 0.07), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * -1.167),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * 0.25), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * -0.933),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * 0.50), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * -0.700),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * 0.75), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * -0.467),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * 0.93), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * -0.233),
       color-mix(in oklab, var(--mgi-pink) var(--mgi-a3), transparent) var(--mgi-r3),
-      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * .25), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * .35),
-      transparent calc(var(--mgi-r3) + var(--mgi-w3) * .7)),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * 0.93), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * 0.183),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * 0.75), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * 0.367),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * 0.50), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * 0.550),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * 0.25), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * 0.733),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * 0.07), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * 0.917),
+      transparent calc(var(--mgi-r3) + var(--mgi-w3) * 1.100)),
     var(--primary);
 }
 :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi) { transform: scale(1.12); }
 :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::before { opacity: 0; }
 :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::after {
   opacity: 1;
-  animation: mgi-ring1 2.1s cubic-bezier(.2, .6, .3, 1) infinite, mgi-ring2 2.1s cubic-bezier(.2, .6, .3, 1) -.7s infinite,
-    mgi-ring3 2.1s cubic-bezier(.2, .6, .3, 1) -1.4s infinite;
+  animation: mgi-ring1 3.2s cubic-bezier(.2, .6, .3, 1) infinite, mgi-ring2 3.2s cubic-bezier(.2, .6, .3, 1) -1.067s infinite,
+    mgi-ring3 3.2s cubic-bezier(.2, .6, .3, 1) -2.133s infinite;
 }
 /* three rings like on water: each is born in the center, leaves it fast and slows down toward the edge (ease-out), gets thinner
    (--mgi-w) and fades (--mgi-a) by its radius, then the next one is born; the delays shift them by a third of the cycle. */
