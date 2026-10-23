@@ -35,3 +35,22 @@ test("icon-filled.svg is the filled twin of icon.svg: same 24 px frame, the tria
   assert.match(f, /fill-rule="evenodd"/);
   assert.match(rd("icon.svg"), /viewBox="0 0 24 24"/);
 });
+
+test("the page rebuilds the menu on every snapshot: navicon.js carries the ring phase and the hover look over to the new icon (0.4.5)", () => {
+  const main = rd("main.js");
+  assert.match(main, /import \{ keepRings \} from "\.\/navicon\.js"/);
+  assert.match(main, /keepRings\(\);/);
+  const js = rd("navicon.js");
+  assert.match(js, /new MutationObserver/);                // sees the old icon go and the new one come
+  assert.match(js, /addEventListener\("animationstart"/);   // the phase is read from, and set on, the rings
+  assert.match(js, /\.startTime = carry\.start/);
+  assert.match(js, /setAttribute\(RESUME/);
+  const css = rd("navicon.css");
+  // the resumed icon shows the hover look at once and without a transition (else the fill fades in again and bounces)
+  assert.match(css, /\[data-mgi-resume\]::after \{ transition: none; \}/);
+  assert.match(css, /\[data-mgi-resume\] \{ transform: scale\(1\.12\); \}/);
+  assert.match(css, /\[data-mgi-resume\]::before \{ opacity: 0; \}/);
+  assert.match(css, /\[data-mgi-resume\]::after \{\s*opacity: 1;/);
+  const rm = css.slice(css.indexOf("prefers-reduced-motion"));
+  assert.match(rm, /\[data-mgi-resume\]::after \{ animation: none; \}/);   // reduced motion stays static for the resumed icon too
+});

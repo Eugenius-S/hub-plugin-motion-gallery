@@ -424,6 +424,45 @@ class Icon(Sandbox):
         self.assertEqual(r["nav_hover"]["eval"][:2], ["0", "1"])
         self.assertGreater(r["nav_hover"]["eval"][2], 1.05)
 
+    def test_menu_rebuild_under_a_held_mouse_does_not_restart_the_rings(self):
+        """The hub puts new nodes into the menu on every snapshot: the icon under the mouse must go on with the same hover look and
+        the same ring phase (0.4.4: its filled layer faded in again and the rings were born in the center again, a jerk of the loop)."""
+        ROW = '.srow.nav:has(.ext-icon[style*="motion-gallery/icon.svg"])'
+        watch = ("(() => { window.__w = []; const sel = %s; const tick = () => { const n = document.querySelector(sel); if (n) { "
+                 "const a = document.getAnimations().find(x => x.effect && x.effect.target === n && (x.animationName || '') === 'mgi-ring1'); "
+                 "window.__w.push([n.__id || (n.__id = Math.random().toString(36).slice(2)), a ? Math.round(a.currentTime) : null, getComputedStyle(n, '::after').opacity, "
+                 "+new DOMMatrix(getComputedStyle(n).transform).a.toFixed(2), n.hasAttribute('data-mgi-resume')]); } requestAnimationFrame(tick); }; tick(); return 1; })()") % json.dumps(NAV)
+        swap = "(() => { const r = document.querySelector(%s); r.replaceWith(r.cloneNode(true)); return 1; })()" % json.dumps(ROW)
+        steps = [
+            (None, {"go": self.url + "#/s/b", "init": COLLECT}),
+            (None, {"until": "!!document.querySelector('#navmenu[data-bound]') && !!document.querySelector('%s')" % NAV, "ms": 10000}),
+            (None, {"eval": "document.querySelector('#navmenu').click(); 1"}),
+            (None, {"until": "!document.querySelector('#nav-extra').hidden", "ms": 6000}),
+            (None, {"drag": ROW, "to": ROW, "keep": True}),
+            (None, {"sleep": 1300}),
+            (None, {"eval": watch}),
+            (None, {"sleep": 500}),
+        ]
+        for _ in range(3):
+            steps += [(None, {"eval": swap}), (None, {"sleep": 700})]
+        steps += [("log", {"eval": "JSON.stringify(window.__w)"}), ("errors", {"eval": "window.__mg"})]
+        r = self.run_steps(steps)
+        log = json.loads(r["log"]["eval"])
+        ids = []
+        for e in log:
+            if not ids or ids[-1] != e[0]:
+                ids.append(e[0])
+        self.assertEqual(len(ids), 4, "the node was replaced three times")
+        for i in range(1, len(log)):
+            prev, cur = log[i - 1], log[i]
+            self.assertEqual(cur[2], "1", f"the filled layer never drops out of the hover look: {prev} -> {cur}")
+            self.assertEqual(cur[3], 1.12, f"nor does the scale: {prev} -> {cur}")
+            if cur[0] != prev[0]:   # the new node: the rings go on from where the old ones were (a frame later, not from zero)
+                self.assertIsNotNone(cur[1], cur)
+                self.assertGreater(cur[1], prev[1], f"the rings of the new icon go on, not restart: {prev} -> {cur}")
+                self.assertLess(cur[1] - prev[1], 120, f"and only a frame or two later: {prev} -> {cur}")
+        self.assertFalse(log[-1][4], "the forced look is released once the real hover is there")
+
 
 @unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
 class Lightbox(Sandbox):

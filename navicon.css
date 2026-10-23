@@ -79,13 +79,19 @@
       transparent calc(var(--mgi-r3) + var(--mgi-w3) * 0.550)),
     var(--primary);
 }
-:is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi) { transform: scale(1.12); }
-:is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::before { opacity: 0; }
-:is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::after {
+:is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi),
+:is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)[data-mgi-resume] { transform: scale(1.12); }
+:is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::before,
+:is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)[data-mgi-resume]::before { opacity: 0; }
+:is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::after,
+:is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)[data-mgi-resume]::after {
   opacity: 1;
   animation: mgi-ring1 3.2s cubic-bezier(.2, .6, .3, 1) infinite, mgi-ring2 3.2s cubic-bezier(.2, .6, .3, 1) -1.067s infinite,
     mgi-ring3 3.2s cubic-bezier(.2, .6, .3, 1) -2.133s infinite;
 }
+/* the page rebuilds the menu on every snapshot: the new icon under a held mouse (data-mgi-resume, navicon.js) shows the hover look at
+   once, without the fade-in and the bounce, and goes on from the ring phase of the old one */
+:is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)[data-mgi-resume], :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)[data-mgi-resume]::before, :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)[data-mgi-resume]::after { transition: none; }
 /* three rings like on water: each is born in the center, leaves it fast and slows down toward the edge (ease-out), gets thinner
    (--mgi-w) and fades (--mgi-a) by its radius, then the next one is born; the delays shift them by a third of the cycle. */
 @property --mgi-r1 { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
@@ -98,6 +104,8 @@
   :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi),
   :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::before,
   :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::after { transition: none; }
-  :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi) { transform: none; }
-  :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::after { animation: none; }
+  :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi),
+  :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)[data-mgi-resume] { transform: none; }
+  :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::after,
+  :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)[data-mgi-resume]::after { animation: none; }
 }
