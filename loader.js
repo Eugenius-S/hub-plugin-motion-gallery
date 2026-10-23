@@ -3,8 +3,12 @@
 const FILE = (still) => new URL(still ? "./loader/runner.png" : "./loader/runner-anim.png", import.meta.url).href;
 const calm = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// <img class="mg-run"> (decorative); the caller removes it when the wait is over; `size` in px (48-64 for a page, less on a card)
-export function runner(el, size = 56) {
+// The size is that of the palette icon of Hub Design (its "Style" button, the menu): the silhouette is ~94% of the 100 px picture,
+// 20 px gives ~19 px of runner against ~17-18 px of the palette. The same everywhere: under the list, on a card, in the lightbox.
+export const RUNNER_PX = 20;
+
+// <img class="mg-run"> (decorative); the caller removes it when the wait is over
+export function runner(el, size = RUNNER_PX) {
   const img = el("img", "mg-run");
   img.alt = "";
   img.decoding = "async";

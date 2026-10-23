@@ -76,7 +76,7 @@ export function openLightbox({ el, tr, base, items, index, onClose }) {
     v.addEventListener("loadeddata", unwait);
     v.addEventListener("error", () => { unwait(); if (video === v) { err.textContent = tr("video_failed"); err.hidden = false; } });
     stage.prepend(video);
-    if (src) { stage.append(runner(el, 56)); v.src = src; v.play().catch(() => {}); }   // the click that opened it allows sound
+    if (src) { stage.append(runner(el)); v.src = src; v.play().catch(() => {}); }   // the click that opened it allows sound
     else { err.textContent = tr("no_video"); err.hidden = false; }
     box.setAttribute("aria-label", [item.title, metaLine(item)].filter(Boolean).join(" · ") || item.slug);
     count.textContent = tr("count", { n: at + 1, total: list.length });

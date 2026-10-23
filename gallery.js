@@ -137,7 +137,7 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
         const img = h.target;
         if (img.dataset.src && !img.src) {
           // the running man stays on the card from the moment the poster is asked until it is drawn
-          const run = runner(el, 40);
+          const run = runner(el);
           const done = () => run.remove();
           img.addEventListener("load", done, { once: true });
           img.addEventListener("error", done, { once: true });
@@ -193,7 +193,7 @@ export function createGallery({ el, tr, base, onPick, session = null }) {
     if (note.dataset.sig !== sig) {
       note.dataset.sig = sig;
       note.textContent = text;
-      if (run) note.prepend(runner(el, 56));
+      if (run) note.prepend(runner(el));
     }
     note.hidden = !text;
   }

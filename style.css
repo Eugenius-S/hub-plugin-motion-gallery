@@ -73,10 +73,10 @@
 .mg-lb-stage { position: relative; flex: 0 1 auto; min-height: 0; max-width: 100%; display: flex; align-items: center; justify-content: center; }
 .mg-lb-video { display: block; max-width: min(100%, 1400px); max-height: calc(100vh - 230px); min-width: min(320px, 100%); background: #000; border-radius: var(--radius); }
 .mg-run { display: block; flex: none; object-fit: contain; pointer-events: none; user-select: none; }
-.mg-lb .mg-run { position: absolute; left: 50%; top: 50%; margin: -28px 0 0 -28px; filter: invert(1); }
+.mg-lb .mg-run { position: absolute; left: 50%; top: 50%; margin: -10px 0 0 -10px; filter: invert(1); }
 .mg-note .mg-run { margin: 0 auto 8px; }
 .mg-dark .mg-run { filter: invert(1); }
-.mg-media .mg-run { position: absolute; left: 50%; top: 50%; margin: -20px 0 0 -20px; }
+.mg-media .mg-run { position: absolute; left: 50%; top: 50%; margin: -10px 0 0 -10px; }
 .mg-lb-err { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 8px 14px; border-radius: var(--radius); background: rgba(0, 0, 0, .7); font-size: 13px; text-align: center; pointer-events: none; }
 .mg-lb-err[hidden], .mg-lb [hidden] { display: none; }
 .mg-lb-cap { flex: 0 0 auto; width: min(100%, 860px); display: flex; flex-direction: column; gap: 4px; text-align: left; }
