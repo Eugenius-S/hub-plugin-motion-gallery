@@ -16,9 +16,13 @@ test("navicon.css: the outline/filled layers and the gradient sweep cover the me
   assert.match(css, /\.srow\.nav \.ext-icon\[style\*="motion-gallery\/icon\.svg"\]/);
   assert.match(css, /:is\(\.srow\.nav, \.mg-open\):is\(:hover, :focus-visible, \.on\)/);   // hover, focus and the open gallery
   assert.match(css, /icon-filled\.svg/);
-  assert.match(css, /repeating-radial-gradient\(circle closest-side at 50% 50%/);   // rings from the center, not a linear sweep
-  assert.match(css, /@property --mgi-r \{ syntax: "<percentage>"/);
-  assert.match(css, /@keyframes mgi-wave \{ to \{ --mgi-r: 60%; \} \}/);   // one full period: no seam in the loop
+  assert.match(css, /radial-gradient\(circle closest-side at 50% 50%/);   // soft-edged rings from the center
+  for (const k of [1, 2, 3]) {   // three rings on water, each with its own registered radius, shifted in time
+    assert.match(css, new RegExp(`@property --mgi-r${k} \{ syntax: "<percentage>"`));
+    assert.match(css, new RegExp(`@keyframes mgi-ring${k} \{ from \{ --mgi-r${k}: 0%; \} to \{ --mgi-r${k}: 100%; \} \}`));
+  }
+  assert.match(css, /cubic-bezier\(\.2, \.6, \.3, 1\)/);   // ease-out: fast from the center, slow at the edge
+  assert.match(css, /--mgi-pink: light-dark\(#e01a7f, #ff2e93\)/);   // saturated, not pastel
   assert.doesNotMatch(css, /linear-gradient|mgi-sweep/);
   const rm = css.slice(css.indexOf("prefers-reduced-motion"));
   assert.match(rm, /animation: none/);

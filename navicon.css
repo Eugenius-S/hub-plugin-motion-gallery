@@ -1,10 +1,10 @@
 /* Motion Gallery icon in the sidebar / ☰ menu and on the gallery button in a session's input: on hover (and while the gallery is
-   open) the outline play circle turns filled and soft pink/primary rings spread from its center like waves, in the send button's colors. The menu
+   open) the outline play circle turns filled and rings spread from its center like circles on water (saturated pink over the primary fill). The menu
    icon is drawn by the core as a mask (.ext-icon, --src), the button holds an empty span (.mg-oi); in both, two layers replace
    it: the outline (::before, currentColor) and the filled circle with the gradient (::after), cross-faded by opacity, since a
    mask image cannot be transitioned. Only our icon matches the selectors; the file paths resolve against this stylesheet. */
 :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi) {
-  --mgi-pink: light-dark(#ec3f97, #ff7ab8);
+  --mgi-pink: light-dark(#e01a7f, #ff2e93);
   position: relative; background: none; -webkit-mask: none; mask: none;
   transition: transform .28s cubic-bezier(.34, 1.56, .64, 1);
 }
@@ -19,25 +19,48 @@
 }
 :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::after {
   -webkit-mask-image: url("icon-filled.svg"); mask-image: url("icon-filled.svg"); opacity: 0;
-  background: repeating-radial-gradient(circle closest-side at 50% 50%,
-    var(--primary) calc(var(--mgi-r) + 0%),
-    color-mix(in oklab, var(--mgi-pink) 15%, var(--primary)) calc(var(--mgi-r) + 7.5%),
-    color-mix(in oklab, var(--mgi-pink) 50%, var(--primary)) calc(var(--mgi-r) + 15%),
-    color-mix(in oklab, var(--mgi-pink) 85%, var(--primary)) calc(var(--mgi-r) + 22.5%),
-    var(--mgi-pink) calc(var(--mgi-r) + 30%),
-    color-mix(in oklab, var(--mgi-pink) 85%, var(--primary)) calc(var(--mgi-r) + 37.5%),
-    color-mix(in oklab, var(--mgi-pink) 50%, var(--primary)) calc(var(--mgi-r) + 45%),
-    color-mix(in oklab, var(--mgi-pink) 15%, var(--primary)) calc(var(--mgi-r) + 52.5%),
-    var(--primary) calc(var(--mgi-r) + 60%));
+  --mgi-w1: calc(8% + (100% - var(--mgi-r1)) * .3);
+  --mgi-a1: min(calc(var(--mgi-r1) * 12), calc((100% - var(--mgi-r1)) * 2.4), 100%);
+  --mgi-w2: calc(8% + (100% - var(--mgi-r2)) * .3);
+  --mgi-a2: min(calc(var(--mgi-r2) * 12), calc((100% - var(--mgi-r2)) * 2.4), 100%);
+  --mgi-w3: calc(8% + (100% - var(--mgi-r3)) * .3);
+  --mgi-a3: min(calc(var(--mgi-r3) * 12), calc((100% - var(--mgi-r3)) * 2.4), 100%);
+  background:
+    radial-gradient(circle closest-side at 50% 50%,
+      transparent calc(var(--mgi-r1) - var(--mgi-w1)),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * .3), transparent) calc(var(--mgi-r1) - var(--mgi-w1) * .5),
+      color-mix(in oklab, var(--mgi-pink) var(--mgi-a1), transparent) var(--mgi-r1),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a1) * .25), transparent) calc(var(--mgi-r1) + var(--mgi-w1) * .35),
+      transparent calc(var(--mgi-r1) + var(--mgi-w1) * .7)),
+    radial-gradient(circle closest-side at 50% 50%,
+      transparent calc(var(--mgi-r2) - var(--mgi-w2)),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * .3), transparent) calc(var(--mgi-r2) - var(--mgi-w2) * .5),
+      color-mix(in oklab, var(--mgi-pink) var(--mgi-a2), transparent) var(--mgi-r2),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a2) * .25), transparent) calc(var(--mgi-r2) + var(--mgi-w2) * .35),
+      transparent calc(var(--mgi-r2) + var(--mgi-w2) * .7)),
+    radial-gradient(circle closest-side at 50% 50%,
+      transparent calc(var(--mgi-r3) - var(--mgi-w3)),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * .3), transparent) calc(var(--mgi-r3) - var(--mgi-w3) * .5),
+      color-mix(in oklab, var(--mgi-pink) var(--mgi-a3), transparent) var(--mgi-r3),
+      color-mix(in oklab, var(--mgi-pink) calc(var(--mgi-a3) * .25), transparent) calc(var(--mgi-r3) + var(--mgi-w3) * .35),
+      transparent calc(var(--mgi-r3) + var(--mgi-w3) * .7)),
+    var(--primary);
 }
 :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi) { transform: scale(1.12); }
 :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::before { opacity: 0; }
 :is(.srow.nav, .mg-open):is(:hover, :focus-visible, .on) :is(.ext-icon[style*="motion-gallery/icon.svg"], .mg-oi)::after {
-  opacity: 1; animation: mgi-wave 2.4s linear infinite;
+  opacity: 1;
+  animation: mgi-ring1 2.1s cubic-bezier(.2, .6, .3, 1) infinite, mgi-ring2 2.1s cubic-bezier(.2, .6, .3, 1) -.7s infinite,
+    mgi-ring3 2.1s cubic-bezier(.2, .6, .3, 1) -1.4s infinite;
 }
-/* --mgi-r moves the rings outward by exactly one period (60% of the radius), so the loop has no seam */
-@property --mgi-r { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
-@keyframes mgi-wave { to { --mgi-r: 60%; } }
+/* three rings like on water: each is born in the center, leaves it fast and slows down toward the edge (ease-out), gets thinner
+   (--mgi-w) and fades (--mgi-a) by its radius, then the next one is born; the delays shift them by a third of the cycle. */
+@property --mgi-r1 { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+@property --mgi-r2 { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+@property --mgi-r3 { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+@keyframes mgi-ring1 { from { --mgi-r1: 0%; } to { --mgi-r1: 100%; } }
+@keyframes mgi-ring2 { from { --mgi-r2: 0%; } to { --mgi-r2: 100%; } }
+@keyframes mgi-ring3 { from { --mgi-r3: 0%; } to { --mgi-r3: 100%; } }
 @media (prefers-reduced-motion: reduce) {
   :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi),
   :is(.srow.nav .ext-icon[style*="motion-gallery/icon.svg"], .mg-open .mg-oi)::before,
