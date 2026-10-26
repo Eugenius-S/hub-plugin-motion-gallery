@@ -16,11 +16,11 @@ The interface is in English by default and in Russian when the hub language (`hu
 
 ## Sources and the downloader (0.4.0)
 
-The gallery can fill itself. Settings → **Motion Gallery: sources** holds the links the plugin downloads from (only `http` and `https` ones; `file:`, `ftp:`, `data:` and paths are refused, redirects to them too); they are remembered (up to 40), you can add and remove any. The plugin brings **no sources of its own**: the list is empty until you add links in that tab or name them in the setting `sources` (below); links named in the setting are put into the list once, on the first start with a non-empty `sources`, and a link you remove does not come back.
+The gallery can fill itself. Settings → **Motion Gallery: sources** holds the links the plugin downloads from (only `http` and `https` ones; `file:`, `ftp:`, `data:` and paths are refused, redirects to them too). The downloader never reads private or local addresses either: `localhost`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `100.64.0.0/10`, `::1`, `fc00::/7`, `fe80::/10` are refused, whether in the link, after a redirect, or because a public-looking name resolves to one (the address is checked when the connection is made, and the connection goes to that checked address); they are remembered (up to 40), you can add and remove any. The plugin brings **no sources of its own**: the list is empty until you add links in that tab or name them in the setting `sources` (below); links named in the setting are put into the list once, on the first start with a non-empty `sources`, and a link you remove does not come back.
 
 The downloader has readers for a few kinds of pages (a gallery page with videos, posters and prompts; a page with install lines); a link without a reader is named in the estimate and skipped, nothing breaks.
 
-**Paste a link, press "Download".** First the plugin counts: how many new examples (up to 30 per link, the ones already in the library are not counted), how big (the real `Content-Length` of a few videos, the average for the rest; exact for a short list) and how long. Then it asks: "Examples: N. About X GB (estimate). Compress the video?" with **Compress** (ffmpeg, H.264 at 1280 px, shows the expected size; the smaller of the original and the compressed file is kept), **As is** and **Cancel**. Without ffmpeg it says so and offers "As is" only. The work runs in the background with a progress bar and a stop button; when it ends, the hub gets a notice (`owner.notify`). Downloaded videos, posters and prompts are in `<state>/motion-gallery/library/` (`gallery.json`, `videos/`, `posters/`), served at `/lib/…` and merged into the gallery at once; they never overwrite your own folder or `media_base`.
+**Paste a link, press "Download".** First the plugin counts: how many new examples (up to 30 per link, the ones already in the library are not counted), how big (the real `Content-Length` of a few videos, the average for the rest; exact for a short list) and how long. Then it asks: "Examples: N. About X GB (estimate). Compress the video?" with **Compress** (ffmpeg, H.264 at 1280 px, shows the expected size; the smaller of the original and the compressed file is kept), **As is** and **Cancel**. Without ffmpeg it says so and offers "As is" only. The work runs in the background with a progress bar and a stop button; when it ends, the hub gets a notice (`owner.notify`). The downloads share one disk limit (`disk_limit_mb`, 2048 MB by default): when the library reaches it the run stops with the line "The disk limit of N MB is reached…" (and the notice to the hub says so), what is saved stays, and nothing breaks; free some room or raise the limit and press Download again. Downloaded videos, posters and prompts are in `<state>/motion-gallery/library/` (`gallery.json`, `videos/`, `posters/`), served at `/lib/…` and merged into the gallery at once; they never overwrite your own folder or `media_base`.
 
 ### The first question
 
@@ -100,16 +100,19 @@ All in `hub.json` → `extensions` → `<account>:motion-gallery`; the plugin sh
 | `dav_folder` | the folder on that storage | `motion-gallery` |
 | `allow_delete` | the Delete button | `true` |
 | `composer_button` | the gallery button in the chat input | `true` |
+| `disk_limit_mb` | the room all the downloaded files together may take, in MB (a missing or wrong value, or under 1, gives the default) | `2048` |
 
-Environment variables `MOTION_GALLERY_DIR`, `_BASE`, `_SOURCES`, `_AGENTS`, `_DAV_LOGIN`, `_DAV_FOLDER`, `_DELETE`, `_COMPOSER_BUTTON` override them (tests).
+Environment variables `MOTION_GALLERY_DIR`, `_BASE`, `_SOURCES`, `_AGENTS`, `_DAV_LOGIN`, `_DAV_FOLDER`, `_DELETE`, `_COMPOSER_BUTTON`, `_DISK_MB` override them (tests).
 
 ## Safety
+
+The plugin works only while the hub is open on the same machine: its process listens on `127.0.0.1` and the page reaches it through `localhost`; from another device (a phone, another computer) the gallery view and the downloader do not work.
 
 The plugin process listens on `127.0.0.1` only (hub page port + 12), checks the `Host` header, serves nothing outside the gallery folder and gives the gallery list only to the hub page's own origin. The delete request (`POST /delete`) needs the page's own `Origin`, a JSON body of at most 4 KB with a `slug`, and touches only paths inside the gallery. The page reaches it only when opened via `localhost`.
 
 ## Install
 
-From the marketplace in the hub (Settings → Plugins, search "Motion Gallery"). The plugin uses the `composer.tools` slot for the chat-input button (a slot of the hub page, button before the microphone); on a hub without that slot the button does not appear and the view works alone. The plugin process takes the hub page port + 12; if that port is busy it exits with a message in the log.
+From the marketplace in the hub (Settings → Plugins, search "Motion Gallery"). The chat-input button needs the `composer.tools` slot of the hub page (button before the microphone). The plugin asks the page whether the slot exists and adds the button only then: on a hub without it nothing is registered, there is no error in Settings → Plugins, the button does not appear and the view works alone. The plugin process takes the hub page port + 12; if that port is busy it exits with a message in the log.
 
 Files shown in the grid (posters, previews) are loaded by the browser straight from their address (the folder or `media_base`); the plugin process fetches only `gallery.json` when there is a base and no folder.
 

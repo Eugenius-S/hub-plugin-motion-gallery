@@ -320,26 +320,34 @@ export default function register(h) {
     show() { main?.load(); },   // new previews may have been added since the last visit
     hide() { main?.stop(); },
   });
-  // a button before the microphone in the input of any chat (the composer.tools slot - an addition of this hub)
-  if (typeof hub.addSlot === "function") {
-    hub.addSlot("composer.tools", {
-      id: "gallery",
-      render(root, snap, ctx) {
-        slotRoots.add(root);
-        if (!ctx.session || cfg.composer_button === false) return root.replaceChildren();   // not a session chat (a plugin's own input, forms), or the owner switched the button off
-        let b = root.firstChild;
-        if (!b) {
-          b = hub.el("button", "btn round quiet mg-open");
-          b.type = "button";
-          b.innerHTML = '<span class="mg-oi" aria-hidden="true"></span>';
-          b.addEventListener("click", () => { const form = root.closest("form"); if (over) over.close(); else if (form) openOver(form); });
-          root.append(b);
-        }
-        b.title = tr("open_in");
-        b.setAttribute("aria-label", tr("open_in"));
-        b.classList.toggle("on", !!over);
-        b.setAttribute("aria-pressed", String(!!over));
-      },
-    });
-  }
+  // a button before the microphone in the input of any chat (the composer.tools slot - an addition of this hub). A hub without
+  // that place would put a "no such slot" error on the Plugins tab, so the slot is asked for only where the place exists
+  if ((PLACE || hub.capabilities?.composerTools === 1) && typeof hub.addSlot === "function") addButton();
+}
+
+// The page names its places in SLOTS (ext.js, the module the page itself runs on). Asked once while the plugin loads - before
+// register runs - so the button is in the first draw of the input, as it was. No such place (a hub without it): no slot is
+// asked for, the view works alone and the Plugins tab shows no error. hub.capabilities.composerTools === 1 says the same
+const PLACE = await import("/static/js/ext.js").then((m) => !!m.SLOTS?.["composer.tools"], () => false);
+
+function addButton() {
+  hub.addSlot("composer.tools", {
+    id: "gallery",
+    render(root, snap, ctx) {
+      slotRoots.add(root);
+      if (!ctx.session || cfg.composer_button === false) return root.replaceChildren();   // not a session chat (a plugin's own input, forms), or the owner switched the button off
+      let b = root.firstChild;
+      if (!b) {
+        b = hub.el("button", "btn round quiet mg-open");
+        b.type = "button";
+        b.innerHTML = '<span class="mg-oi" aria-hidden="true"></span>';
+        b.addEventListener("click", () => { const form = root.closest("form"); if (over) over.close(); else if (form) openOver(form); });
+        root.append(b);
+      }
+      b.title = tr("open_in");
+      b.setAttribute("aria-label", tr("open_in"));
+      b.classList.toggle("on", !!over);
+      b.setAttribute("aria-pressed", String(!!over));
+    },
+  });
 }

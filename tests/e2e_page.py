@@ -243,6 +243,31 @@ class ButtonOff(Sandbox):
         self.assertTrue(r["cards"]["until"], "the view itself still works")
 
 
+@unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
+class Place(Sandbox):
+    """The button sits in the hub's own place composer.tools. A hub without that place (the shared core) gets no button and,
+    above all, no error on the Plugins tab; a hub with it gets the button."""
+
+    def test_the_button_follows_the_place_and_nothing_is_reported(self):
+        r = self.run_steps([
+            (None, {"go": self.url + "#/s/b", "init": COLLECT}),
+            (None, {"until": "!!document.querySelector('form.composer textarea')", "ms": 10000}),
+            (None, {"eval": "import('/static/js/ext.js').then(m => { window.__pl = JSON.stringify({ problems: [...m.problems], place: !!m.SLOTS['composer.tools'] }); window.__place = !!m.SLOTS['composer.tools']; }); 1"}),
+            ("info", {"until": "window.__pl !== undefined", "ms": 5000}),
+            (None, {"sleep": 2500}),
+            # the input takes the button on the next snapshot of the page: with the place, wait for it; without, nothing to wait for
+            (None, {"until": "!window.__place || !!document.querySelector('form.composer .mg-open')", "ms": 10000}),
+            ("button", {"eval": "document.querySelectorAll('form.composer .mg-open').length"}),
+            ("seen", {"eval": "window.__pl"}),
+            ("thrown", {"eval": "JSON.stringify(window.__mg)"}),
+        ])
+        info = json.loads(r["seen"]["eval"])
+        self.assertEqual(info["problems"], [], "nothing on the Plugins tab")
+        self.assertEqual(json.loads(r["thrown"]["eval"]), [], "nothing thrown on the page")
+        self.assertEqual(r["button"]["eval"], 1 if info["place"] else 0,
+                         "the button exists exactly when the hub has the place " + str(info["place"]))
+
+
 # panel above the input? gap = input top - panel bottom (px, >= 0 means above); covered = the element at the input centre is not the input
 GEOMETRY = """(() => {
   const p = document.querySelector('.mg-panel'), f = document.querySelector('form.composer'), t = f.querySelector('textarea');

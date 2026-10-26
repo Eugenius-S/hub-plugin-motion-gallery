@@ -27,6 +27,7 @@ export const STR = {
     prog: "{done} of {total}", counts: "added {added}", now: "Now: {name}", size: "{size} saved",
     s_done: "Done. Added {added}.", s_stopped: "Stopped. Added {added}. Press Download to continue: what is saved is skipped.",
     s_error: "The download stopped: too many failures in a row. Press Download to try again.",
+    s_full: "The disk limit of {limit} MB is reached. Added {added}. Free some room or raise disk_limit_mb in the plugin settings, then press Download.",
     errs: "Problems: {list}",
     e_no_links: "Add at least one link.",
     e_too_many: "At most {max} links.",
@@ -56,6 +57,7 @@ export const STR = {
     prog: "{done} из {total}", counts: "добавлено {added}", now: "Сейчас: {name}", size: "сохранено {size}",
     s_done: "Готово. Добавлено {added}.", s_stopped: "Остановлено. Добавлено {added}. «Скачать» продолжит: сохранённое пропускается.",
     s_error: "Скачивание остановилось: слишком много сбоев подряд. Нажмите «Скачать», чтобы повторить.",
+    s_full: "Достигнут предел места на диске: {limit} МБ. Добавлено {added}. Освободите место или увеличьте disk_limit_mb в настройках плагина и нажмите «Скачать».",
     errs: "Сбои: {list}",
     e_no_links: "Добавьте хотя бы одну ссылку.",
     e_too_many: "Не больше {max} ссылок.",
@@ -104,10 +106,11 @@ export function problem(code, link) {
 // the line after a run: how it ended
 export function summary(st) {
   if (!st) return "";
-  const v = { added: st.added || 0 };
+  const v = { added: st.added || 0, limit: st.limit || 0 };
   if (st.state === "done") return t("s_done", v);
   if (st.state === "stopped") return t("s_stopped", v);
   if (st.state === "error") return t("s_error");
+  if (st.state === "full") return t("s_full", v);
   return "";
 }
 

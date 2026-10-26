@@ -22,6 +22,7 @@ SMALL = 0.35                   # the share ffmpeg leaves of a video (1280 px, cr
 SECONDS_EACH = 2.0             # a page, a video and a poster
 VIDEO_MAX = 80 * 1024 * 1024
 POSTER_MAX = 8 * 1024 * 1024
+DISK_MB = 2048                 # the room the downloads may take together (setting disk_limit_mb)
 SAMPLE = 3
 GIVE_UP = 10                   # failures in a row stop the run
 VIDEO_EXT = (".mp4", ".webm", ".mov", ".m4v")
@@ -60,9 +61,26 @@ def write_json(path, data):
             time.sleep(0.1)
 
 
+class DiskFull(Exception):
+    """The downloads reached the limit of the disk room."""
+
+
+def folder_size(path):
+    """The bytes of every file under path (a file that goes away on the way is not counted)."""
+    total = 0
+    for here, _, names in os.walk(path):
+        for n in names:
+            try:
+                total += os.path.getsize(os.path.join(here, n))
+            except OSError:
+                pass
+    return total
+
+
 class Fetcher:
-    def __init__(self, root, get=None, head=None, save=None, which=None, run=None, sleep=None):
+    def __init__(self, root, get=None, head=None, save=None, which=None, run=None, sleep=None, disk_mb=None):
         self.root = root
+        self.disk_mb = disk_mb or (lambda: DISK_MB)   # the limit in megabytes, asked at every file: the setting may change
         self.get = get or net.get_text
         self.head = head or net.head_size
         self.save = save or net.save
@@ -73,6 +91,10 @@ class Fetcher:
         self.thread = None
         self.stopping = False
         self.state = {"state": "idle", "done": 0, "total": 0, "bytes": 0, "current": "", "errors": [], "added": 0}
+
+    def room(self):
+        """Bytes the downloads may still take: the limit minus what the library holds now."""
+        return max(int(self.disk_mb() * 1024 * 1024) - folder_size(library(self.root)), 0)
 
     # ---- what a download would be
     def ffmpeg(self):
@@ -120,7 +142,8 @@ class Fetcher:
         avg = sum(sized) // len(sized) if sized else AVG_BYTES
         size = avg * total
         return {"links": links, "n": total, "bytes": size, "exact": bool(total) and total <= SAMPLE and len(sized) == total,
-                "seconds": int(total * SECONDS_EACH), "ffmpeg": bool(self.ffmpeg()), "small": int(size * SMALL), "skipped": skipped}
+                "seconds": int(total * SECONDS_EACH), "ffmpeg": bool(self.ffmpeg()), "small": int(size * SMALL), "skipped": skipped,
+                "limit": int(self.disk_mb() * 1024 * 1024), "room": self.room()}
 
     # ---- the download
     def status(self):
@@ -184,6 +207,8 @@ class Fetcher:
                     with self.lock:
                         self.state["bytes"] += size
                         self.state["added"] += 1 if size else 0
+                except DiskFull:
+                    raise
                 except net.NetError as e:
                     failed += 1
                     self._error(f"{net.host(page_url)}: {e.what}")
@@ -196,6 +221,9 @@ class Fetcher:
                     self.state["done"] += 1
                 self.sleep(0.3)
             self._set(state="stopped" if self.stopping else ("error" if failed >= GIVE_UP else "done"), current="")
+        except DiskFull:
+            net.log(f"the disk limit of {self.disk_mb():g} MB is reached")
+            self._set(state="full", current="", limit=self.disk_mb())
         except Exception as e:
             net.log(f"downloader: {type(e).__name__}: {e}")
             self._error(type(e).__name__)
@@ -210,7 +238,7 @@ class Fetcher:
         lib = library(self.root)
         slug = entry["slug"]
         rel = f"videos/{slug}{ext_of(entry['video_url'], VIDEO_EXT, '.mp4')}"
-        size = self.save(entry["video_url"], os.path.join(lib, *rel.split("/")), VIDEO_MAX)
+        size = self._save(entry["video_url"], os.path.join(lib, *rel.split("/")), VIDEO_MAX)
         if compress:
             size = self._squeeze(os.path.join(lib, *rel.split("/")), size)
         poster = ""
@@ -219,13 +247,25 @@ class Fetcher:
         elif entry["poster_url"]:
             prel = f"posters/{slug}{ext_of(entry['poster_url'], POSTER_EXT, '.jpg')}"
             try:
-                size += self.save(entry["poster_url"], os.path.join(lib, *prel.split("/")), POSTER_MAX)
+                size += self._save(entry["poster_url"], os.path.join(lib, *prel.split("/")), POSTER_MAX)
                 poster = prel
             except net.NetError as e:   # a gallery without this poster still plays the video
                 net.log(f"poster {net.host(entry['poster_url'])}: {e.what}")
         self._add({"slug": slug, "title": entry["title"], "author": entry["author"], "category": "", "tags": entry["tags"], "prompt": entry["prompt"],
                    "sources": [site.name], "pages": {site.name: page_url}, "video": rel, "poster": poster, "seconds": entry["seconds"], "from": link})
         return size
+
+    def _save(self, url, path, cap):
+        """self.save with the room left as the cap: DiskFull when there is none (the file that did not fit is not kept)."""
+        room = self.room()
+        if room <= 0:
+            raise DiskFull()
+        try:
+            return self.save(url, path, min(cap, room))
+        except net.NetError as e:
+            if e.what == "file too big" and room < cap:   # it was the room, not the size limit of a file
+                raise DiskFull()
+            raise
 
     def _squeeze(self, path, size):
         """ffmpeg over a video; the smaller of the two stays. -> the size now."""

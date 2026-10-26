@@ -19,6 +19,7 @@ NOTE = {
     "ru": ("Motion Gallery: скачано примеров - {n}", "Motion Gallery скачал примеров: {n}.{extra}"),
 }
 EXTRA = {"en": " {m} failed to download.", "ru": " Не удалось скачать: {m}."}
+FULL = {"en": " The disk limit of {limit} MB is reached: free some room or raise disk_limit_mb.", "ru": " Достигнут предел места на диске ({limit} МБ): освободите место или увеличьте disk_limit_mb."}
 
 
 def _lang():
@@ -112,12 +113,14 @@ class Ctl:
     def finished(self):
         """The background download is over: one fact to the owner."""
         st = self.fetch.status()
-        if not self.notify or st["state"] not in ("done", "error", "stopped"):
+        if not self.notify or st["state"] not in ("done", "error", "stopped", "full"):
             return
         lang = _lang()
         title, text = NOTE[lang]
         failed = max(st["done"] - st["added"], 0)
         extra = EXTRA[lang].format(m=failed) if failed else ""
+        if st["state"] == "full":
+            extra += FULL[lang].format(limit=st.get("limit", 0))
         self.notify("owner.notify", {"id": NOTE_ID, "title": title.format(n=st["added"]), "text": text.format(n=st["added"], extra=extra), "urgency": "later", "asked": True})
 
     # --- what the page shows ---

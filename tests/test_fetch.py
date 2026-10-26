@@ -52,6 +52,7 @@ class Fakes:
 
     def __init__(self, web, size=1000, ffmpeg=None):
         self.web, self.size, self.exe = web, size, ffmpeg
+        self.honest = False
         self.gets, self.saved, self.ran = [], [], []
 
     def get(self, url):
@@ -65,6 +66,8 @@ class Fakes:
 
     def save(self, url, path, limit):
         self.saved.append(url)
+        if self.honest and self.size > limit:   # what net.save does: a file over the cap is not kept
+            raise net.NetError(0, "file too big")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as f:
             f.write(b"x" * self.size)
@@ -80,8 +83,8 @@ class Fakes:
             f.write(b"y" * (os.path.getsize(src) // 3))
         return subprocess.CompletedProcess(cmd, 0)
 
-    def fetcher(self, root):
-        return fetcher.Fetcher(root, get=self.get, head=self.head, save=self.save, which=self.which, run=self.run, sleep=lambda s: None)
+    def fetcher(self, root, disk_mb=None):
+        return fetcher.Fetcher(root, get=self.get, head=self.head, save=self.save, which=self.which, run=self.run, sleep=lambda s: None, disk_mb=disk_mb)
 
 
 class TmpCase(unittest.TestCase):
@@ -378,6 +381,82 @@ class Question(TmpCase):
         kind, data = self.sent[-1]
         self.assertEqual((kind, data["id"], data["asked"]), ("owner.notify", linkctl.NOTE_ID, True))
         self.assertIn("2", data["title"])
+
+
+class DiskLimit(TmpCase):
+    """All the downloads together have one room (disk_limit_mb); the end of it is a state with a line, not a crash."""
+    MB = 1024 * 1024
+
+    def go(self, count, limit_mb, size=3000, honest=False):
+        fk = Fakes(pages(count), size=size)
+        fk.honest = honest
+        f = fk.fetcher(self.root, disk_mb=lambda: limit_mb)
+        self.assertTrue(f.start([LIST]))
+        f.join(10)
+        return fk, f
+
+    def test_the_default_room_is_two_gigabytes(self):
+        self.assertEqual(fetcher.DISK_MB, 2048)
+        f = Fakes(pages(1)).fetcher(self.root)
+        self.assertEqual(f.room(), 2048 * self.MB)
+
+    def test_inside_the_room_everything_is_downloaded(self):
+        fk, f = self.go(3, 1)
+        self.assertEqual(f.status()["state"], "done")
+        self.assertEqual(f.status()["added"], 3)
+
+    def test_the_run_stops_when_the_room_is_used_up(self):
+        fk, f = self.go(6, 14000 / self.MB, honest=True)   # room for two examples (6000 bytes each) and a part of the third
+        st = f.status()
+        self.assertEqual(st["state"], "full")
+        self.assertEqual(st["added"], 2)
+        self.assertGreater(st["limit"], 0)
+        self.assertEqual(st["current"], "")
+        lib = fetcher.library(self.root)
+        self.assertLessEqual(fetcher.folder_size(os.path.join(lib, "videos")) + fetcher.folder_size(os.path.join(lib, "posters")), 14000)
+        self.assertLess(len(fk.saved), 6 * 2)   # it did not go on downloading what has no room
+
+    def test_a_file_that_does_not_fit_is_not_kept_and_counts_as_the_room_ending(self):
+        fk, f = self.go(4, 9000 / self.MB, size=5000, honest=True)
+        st = f.status()
+        self.assertEqual(st["state"], "full")
+        parts = [n for _, _, names in os.walk(fetcher.library(self.root)) for n in names if n.endswith(".part")]
+        self.assertEqual(parts, [])
+        self.assertLessEqual(fetcher.folder_size(fetcher.library(self.root)), 9000)
+
+    def test_what_is_saved_stays_and_a_new_run_after_room_is_freed_goes_on(self):
+        fk, f = self.go(6, 14000 / self.MB)
+        self.assertEqual(f.status()["state"], "full")
+        added = f.status()["added"]
+        f2 = fk.fetcher(self.root, disk_mb=lambda: 5)
+        self.assertTrue(f2.start([LIST]))
+        f2.join(10)
+        self.assertEqual(f2.status()["state"], "done")
+        self.assertEqual(added + f2.status()["added"], 6)
+
+    def test_the_limit_is_asked_at_every_file(self):
+        seen = []
+        fk = Fakes(pages(2), size=100)
+        f = fk.fetcher(self.root, disk_mb=lambda: seen.append(1) or 5)
+        f.start([LIST])
+        f.join(10)
+        self.assertGreaterEqual(len(seen), 4)
+
+    def test_the_plan_says_the_limit_and_the_room(self):
+        plan = Fakes(pages(2)).fetcher(self.root, disk_mb=lambda: 3).plan([LIST])
+        self.assertEqual(plan["limit"], 3 * self.MB)
+        self.assertEqual(plan["room"], 3 * self.MB)
+
+    def test_the_line_is_in_both_languages_and_the_owner_is_told(self):
+        fk, f = self.go(6, 14000 / self.MB)
+        sent = []
+        ctl = linkctl.Ctl(linkmem.Links(os.path.join(self.root, "links.json")), f, notify=lambda kind, data: sent.append((kind, data)))
+        ctl.finished()
+        kind, data = sent[-1]
+        self.assertEqual((kind, data["id"]), ("owner.notify", linkctl.NOTE_ID))
+        self.assertIn("disk_limit_mb", data["text"])
+        for lang in ("en", "ru"):
+            self.assertIn("disk_limit_mb", linkctl.FULL[lang])
 
 
 class Telegram(TmpCase):

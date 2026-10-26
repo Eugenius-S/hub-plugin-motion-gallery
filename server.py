@@ -113,6 +113,16 @@ def composer_button():
     return flag_setting("composer_button", "MOTION_GALLERY_COMPOSER_BUTTON")
 
 
+def disk_limit_mb():
+    """The room (MB) all the downloads together may take; a missing, wrong or non-positive value - the default."""
+    raw = raw_setting("disk_limit_mb", "MOTION_GALLERY_DISK_MB")
+    try:
+        val = float(raw) if raw is not None and not isinstance(raw, bool) else 0
+    except (TypeError, ValueError):
+        val = 0
+    return int(val) if val >= 1 else fetcher.DISK_MB
+
+
 def gallery_dir():
     """The folder of the gallery, or None: not set / not a folder."""
     path = setting("gallery_dir", "MOTION_GALLERY_DIR")
@@ -728,7 +738,7 @@ def notify(kind, data):
 
 def make_ctl():
     root = plugin_dir()
-    return linkctl.Ctl(linkmem.Links(os.path.join(root, linkmem.NAME)), fetcher.Fetcher(root), notify=notify,
+    return linkctl.Ctl(linkmem.Links(os.path.join(root, linkmem.NAME)), fetcher.Fetcher(root, disk_mb=disk_limit_mb), notify=notify,
                        defaults=sources_setting, agents=agents_setting,
                        configured=lambda: bool(setting("gallery_dir", "MOTION_GALLERY_DIR") or media_base()))
 

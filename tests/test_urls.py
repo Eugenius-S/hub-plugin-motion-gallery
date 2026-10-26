@@ -1,6 +1,8 @@
 """Only http and https are read: file:, data:, ftp: and local paths are refused, in the downloader and in the poster proxy."""
+import ipaddress
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -8,6 +10,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -63,6 +66,9 @@ class Base(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        patcher = mock.patch.object(net, "ALLOW_PRIVATE", True)   # the test site is on 127.0.0.1
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.bait = os.path.join(self.tmp.name, "id_rsa")   # stands for ~/.ssh/id_rsa
         Path(self.bait).write_bytes(SECRET)
         Lure.target = self.bait
@@ -104,14 +110,113 @@ class Loader(Base):
     def test_curl_is_told_to_speak_http_only(self):
         seen = []
         orig = subprocess.run
-        subprocess.run = lambda cmd, **kw: (seen.append(cmd), subprocess.CompletedProcess(cmd, 0, b"", b""))[1]
+        subprocess.run = lambda cmd, **kw: (seen.append(cmd), subprocess.CompletedProcess(cmd, 0, b"200 ", b""))[1]
         try:
-            net._curl(["http://x.test/"], 5)
+            net._curl("http://127.0.0.1/", [], 5, os.path.join(self.tmp.name, "o"))
         finally:
             subprocess.run = orig
         cmd = seen[0]
         self.assertEqual(cmd[cmd.index("--proto") + 1], "=http,https")
-        self.assertEqual(cmd[cmd.index("--proto-redir") + 1], "=http,https")
+        self.assertNotIn("-L", cmd)   # redirects are followed here, hop by hop, never by curl
+
+
+class Private(unittest.TestCase):
+    """The downloader never reads this machine or a private network (ALLOW_PRIVATE is off here, as in the real process)."""
+    ADDRESSES = ["127.0.0.1", "127.8.9.10", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.1.1", "169.254.169.254", "100.64.0.1",
+                 "0.0.0.0", "[::1]", "[fc00::1]", "[fd12:3456::1]", "[fe80::1]", "[::ffff:127.0.0.1]", "[::ffff:10.0.0.1]", "localhost", "LOCALHOST.",
+                 "app.localhost"]
+
+    def setUp(self):
+        self.assertFalse(net.ALLOW_PRIVATE)
+
+    def test_every_private_form_is_an_address_of_this_machine_or_network(self):
+        for a in ("127.0.0.1", "10.0.0.1", "172.20.1.1", "192.168.0.9", "169.254.1.1", "::1", "fc00::1", "fe80::1", "::ffff:192.168.1.1"):
+            self.assertTrue(net.is_private(a), a)
+        for a in ("8.8.8.8", "93.184.216.34", "172.32.0.1", "2606:4700::1111", "example.com"):
+            self.assertFalse(net.is_private(a), a)
+
+    def test_a_link_to_a_private_address_is_refused_everywhere(self):
+        for a in self.ADDRESSES:
+            url = f"http://{a}:9/x"
+            with self.assertRaises(net.NetError, msg=url):
+                net.get_text(url)
+            with self.assertRaises(net.NetError, msg=url):
+                net.save(url, os.path.join(tempfile.gettempdir(), "mg-never.bin"), 1000)
+            self.assertEqual(net.head_size(url), 0, url)
+
+    def test_a_name_that_resolves_to_a_private_address_is_refused(self):
+        def lie(name, port, **kw):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", port))]
+        with mock.patch.object(socket, "getaddrinfo", lie):
+            with self.assertRaises(net.NetError):
+                net.vet("looks-public.example", 80)
+            with self.assertRaises(net.NetError):
+                net.get_text("http://looks-public.example/")
+
+    def test_one_private_answer_among_public_ones_is_enough_to_refuse(self):
+        def mixed(name, port, **kw):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port)), (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port))]
+        with mock.patch.object(socket, "getaddrinfo", mixed):
+            with self.assertRaises(net.NetError):
+                net.vet("two-faced.example", 80)
+
+    def test_a_public_address_is_let_through_and_connected_to_exactly_that_address(self):
+        def good(name, port, **kw):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+        with mock.patch.object(socket, "getaddrinfo", good):
+            self.assertEqual(net.vet("example.com", 80)[0][4], ("93.184.216.34", 80))
+
+    def test_a_name_that_does_not_resolve_is_a_clear_refusal(self):
+        def none(name, port, **kw):
+            raise socket.gaierror("no")
+        with mock.patch.object(socket, "getaddrinfo", none):
+            with self.assertRaises(net.NetError) as c:
+                net.vet("nowhere.example", 80)
+            self.assertIn("resolve", c.exception.what)
+
+    def test_a_redirect_to_a_private_address_is_not_followed(self):
+        """Hop 1 is let through (the test narrows the list to 10/8, so the local test site counts as public); it answers with a
+        redirect to 10.0.0.7: that second address is vetted like the first and refused, no connection is made to it."""
+        class Jump(Lure):
+            def do_GET(self):
+                self.send_response(302)
+                self.send_header("Location", "http://10.0.0.7:9/secret")
+                self.end_headers()
+        jumper = ThreadingHTTPServer(("127.0.0.1", 0), Jump)
+        threading.Thread(target=jumper.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{jumper.server_address[1]}/"
+            with mock.patch.object(net, "PRIVATE", [ipaddress.ip_network("10.0.0.0/8")]):
+                for call in (lambda: net.get_text(url), lambda: net.save(url, os.path.join(tempfile.gettempdir(), "mg-never.bin"), 1000)):
+                    with self.assertRaises(net.NetError) as c:
+                        call()
+                    self.assertIn("private", c.exception.what)
+        finally:
+            jumper.shutdown()
+            jumper.server_close()
+
+    def test_curl_hops_are_vetted_and_a_redirect_to_a_private_address_is_refused(self):
+        runs = []
+
+        def fake(cmd, **kw):
+            runs.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, b"302 http://10.0.0.7/secret", b"")
+
+        def public(name, port, **kw):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+        out = os.path.join(tempfile.gettempdir(), "mg-curl-out")
+        with mock.patch.object(socket, "getaddrinfo", public), mock.patch.object(subprocess, "run", fake):
+            with self.assertRaises(net.NetError):
+                net._curl("http://example.com/start", [], 5, out)
+        self.assertEqual(len(runs), 1)   # the second hop never reached curl
+        cmd = runs[0]
+        self.assertEqual(cmd[cmd.index("--resolve") + 1], "example.com:80:93.184.216.34")   # curl is held to the vetted address
+        self.assertNotIn("-L", cmd)
+
+    def test_curl_of_a_private_address_never_starts(self):
+        with mock.patch.object(subprocess, "run", side_effect=AssertionError("curl started")):
+            with self.assertRaises(net.NetError):
+                net._curl("http://192.168.1.1/", [], 5, os.path.join(tempfile.gettempdir(), "mg-curl-out"))
 
 
 class Proxy(Base):

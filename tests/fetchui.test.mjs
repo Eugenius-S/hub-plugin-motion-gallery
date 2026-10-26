@@ -63,6 +63,7 @@ test("problem, summary, percent, isRunning", () => {
   assert.equal(problem(""), "");
   assert.match(summary({ state: "done", added: 5 }), /5/);
   assert.equal(summary({ state: "running" }), "");
+  assert.match(summary({ state: "full", added: 2, limit: 5 }), /5/);
   assert.equal(percent({ done: 1, total: 4 }), 25);
   assert.equal(percent({ done: 0, total: 0 }), 0);
   assert.equal(percent({ done: 9, total: 4 }), 100);

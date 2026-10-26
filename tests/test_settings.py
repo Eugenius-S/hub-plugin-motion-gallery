@@ -23,7 +23,7 @@ import server  # noqa: E402
 import tgpost  # noqa: E402
 
 ENV = ("MOTION_GALLERY_DIR", "MOTION_GALLERY_BASE", "MOTION_GALLERY_DAV_LOGIN", "MOTION_GALLERY_DAV_FOLDER", "MOTION_GALLERY_DELETE",
-       "MOTION_GALLERY_SOURCES", "MOTION_GALLERY_AGENTS", "MOTION_GALLERY_COMPOSER_BUTTON")
+       "MOTION_GALLERY_SOURCES", "MOTION_GALLERY_AGENTS", "MOTION_GALLERY_COMPOSER_BUTTON", "MOTION_GALLERY_DISK_MB")
 
 
 class Case(unittest.TestCase):
@@ -116,6 +116,29 @@ class FromHubJson(Case):
         q = c.question()
         self.assertEqual((q["sources"], q["agents"]), (2, ["writer"]))
         self.assertEqual(q["links"], ["https://skillry.dev/ai-videos", "https://github.com/a/b"])
+
+
+class DiskLimit(Case):
+    def test_the_disk_limit_is_a_setting_with_a_sane_default(self):
+        self.assertEqual(server.disk_limit_mb(), fetcher.DISK_MB)
+        for good, want in ((500, 500), ("750", 750), (1.5, 1), (12000, 12000)):
+            self.cfg = {"disk_limit_mb": good}
+            self.assertEqual(server.disk_limit_mb(), want, good)
+        for bad in (0, -5, 0.5, "many", None, True, [], {}):
+            self.cfg = {"disk_limit_mb": bad}
+            self.assertEqual(server.disk_limit_mb(), fetcher.DISK_MB, bad)
+        self.cfg = {"disk_limit_mb": 300}
+        os.environ["MOTION_GALLERY_DISK_MB"] = "42"
+        try:
+            self.assertEqual(server.disk_limit_mb(), 42)
+        finally:
+            del os.environ["MOTION_GALLERY_DISK_MB"]
+
+    def test_the_downloader_reads_the_limit_when_it_is_made(self):
+        os.environ["HUB_STATE_DIR"] = self.root
+        self.cfg = {"disk_limit_mb": 64}
+        ctl = server.make_ctl()
+        self.assertEqual(ctl.fetch.disk_mb(), 64)
 
 
 class Estimate(unittest.TestCase):
