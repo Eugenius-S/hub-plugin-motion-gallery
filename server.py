@@ -31,6 +31,7 @@ from urllib.parse import quote, unquote, urlparse
 import fetcher
 import linkctl
 import links as linkmem
+import net
 import tgpost
 from remove import take_out
 
@@ -440,7 +441,8 @@ def fetch_with_curl(url, limit):
         log("curl is not installed, cannot read " + url_host(url))
         return None
     try:
-        r = subprocess.run([exe, "-sSfL", "--max-time", "30", "--max-filesize", str(limit), url],
+        url = net.safe_url(url)
+        r = subprocess.run([exe, "-sSfL", "--proto", "=http,https", "--proto-redir", "=http,https", "--max-time", "30", "--max-filesize", str(limit), url],
                            capture_output=True, timeout=40, stdin=subprocess.DEVNULL)
     except Exception as e:
         log(f"curl failed for {url_host(url)}: {e}")
@@ -463,9 +465,14 @@ def fetch_url(url, limit):
     """(bytes, mime) of a remote file or None. Directly without a proxy first (the hub proxy drops these connections), then
     through curl (Python on some machines does not trust the certificate that curl trusts; curl also uses the proxy from the
     environment). The reason of every failure goes to the log of the process."""
+    try:
+        url = net.safe_url(url)   # only http and https: never a file:, data: or ftp: address, never a path
+    except net.NetError:
+        log("refused an address that is not http or https")
+        return None
     req = urllib.request.Request(url, headers={"User-Agent": "hub-motion-gallery"})
     try:
-        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=15) as r:
+        with net.build().open(req, timeout=15) as r:
             data = r.read(limit + 1)
             mime = (r.headers.get("Content-Type") or "").split(";")[0].strip()
         if len(data) > limit:
@@ -474,6 +481,9 @@ def fetch_url(url, limit):
         return data, mime
     except urllib.error.HTTPError as e:   # the server answered: a missing file stays missing, curl would get the same
         log(f"{url_host(url)}: HTTP {e.code}")
+        return None
+    except net.NetError as e:   # a redirect to something that is not http(s)
+        log(f"{url_host(url)}: {e.what}")
         return None
     except Exception as e:
         log(f"python could not read {url_host(url)} ({type(e).__name__}: {e}); trying curl")

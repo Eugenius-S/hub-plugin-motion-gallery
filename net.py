@@ -2,14 +2,15 @@
 
 Directly without a proxy first (the hub proxy drops these connections), then curl (it has its own certificate store and
 speaks to the hub proxy). Nothing is written under the final name until the whole file came; a file bigger than the limit
-is not taken. Addresses go to the log by host only."""
+is not taken. Only http and https addresses are read (safe_url): a file:, data:, ftp: or plain path is refused before any request, a
+redirect to anything else is refused too, in Python and in curl. Addresses go to the log by host only."""
 import os
 import shutil
 import subprocess
 import sys
 import urllib.error
 import urllib.request
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 UA = "hub-motion-gallery"
 TEXT_MAX = 6 * 1024 * 1024
@@ -32,9 +33,37 @@ def log(msg):
     print("motion-gallery: " + msg, file=sys.stderr, flush=True)
 
 
+def safe_url(url):
+    """The address itself when it is an http(s) address with a host; NetError otherwise (file:, data:, ftp:, a path, nothing)."""
+    u = url.strip() if isinstance(url, str) else ""
+    try:
+        p = urlparse(u)
+        ok = p.scheme.lower() in ("http", "https") and bool(p.hostname)
+    except ValueError:
+        ok = False
+    if not ok or any(c in u for c in "\r\n\0"):
+        raise NetError(0, "only http and https addresses are read")
+    return u
+
+
+class _Redirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        safe_url(urljoin(req.full_url, newurl))   # a redirect to file:, ftp: ... is not followed
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def build():
+    """urllib with http and https only (build_opener alone adds file:, ftp: and data:), no proxy, redirects checked."""
+    o = urllib.request.OpenerDirector()
+    for h in (urllib.request.ProxyHandler({}), urllib.request.HTTPHandler(), urllib.request.HTTPSHandler(), _Redirects(),
+              urllib.request.HTTPDefaultErrorHandler(), urllib.request.HTTPErrorProcessor()):
+        o.add_handler(h)
+    return o
+
+
 def _open(url, method="GET", timeout=20):
-    req = urllib.request.Request(url, method=method, headers={"User-Agent": UA})
-    return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout)
+    req = urllib.request.Request(safe_url(url), method=method, headers={"User-Agent": UA})
+    return build().open(req, timeout=timeout)
 
 
 def _curl(args, timeout):
@@ -42,16 +71,19 @@ def _curl(args, timeout):
     if not exe:
         raise NetError(0, "curl is not installed")
     try:
-        return subprocess.run([exe, "-sSfL", *args], capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        return subprocess.run([exe, "-sSfL", "--proto", "=http,https", "--proto-redir", "=http,https", *args], capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         raise NetError(0, "timeout")
 
 
 def get_text(url, limit=TEXT_MAX):
     """The page as text."""
+    url = safe_url(url)
     try:
         with _open(url) as r:
             data = r.read(limit + 1)
+    except NetError:
+        raise
     except urllib.error.HTTPError as e:
         raise NetError(e.code, f"HTTP {e.code}")
     except Exception as e:
@@ -66,7 +98,11 @@ def get_text(url, limit=TEXT_MAX):
 
 
 def head_size(url):
-    """Content-Length of the file, or 0 when the server does not say."""
+    """Content-Length of the file, or 0 when the server does not say (or the address is not http/https)."""
+    try:
+        url = safe_url(url)
+    except NetError:
+        return 0
     try:
         with _open(url, "HEAD") as r:
             return int(r.headers.get("Content-Length") or 0)
@@ -87,6 +123,7 @@ def _lengths(headers):
 
 def save(url, path, limit):
     """The file at url -> path (through path.part). -> its size."""
+    url = safe_url(url)
     part = path + ".part"
     os.makedirs(os.path.dirname(path), exist_ok=True)
     size = 0

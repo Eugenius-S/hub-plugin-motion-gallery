@@ -224,15 +224,15 @@ class CurlFallback(unittest.TestCase):
         self.url = "http://127.0.0.1:%d" % self.srv.server_address[1]
         self._env = {k: os.environ.get(k) for k in ("NO_PROXY", "no_proxy")}
         os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
-        self._opener = server.urllib.request.build_opener
+        self._opener = server.net.build
 
         class Dead:
             def open(self, *a, **k):
                 raise OSError("python cannot reach it")
-        server.urllib.request.build_opener = lambda *a: Dead()
+        server.net.build = lambda *a: Dead()
 
     def tearDown(self):
-        server.urllib.request.build_opener = self._opener
+        server.net.build = self._opener
         for k, v in self._env.items():
             os.environ.pop(k, None)
             if v is not None:
@@ -271,15 +271,17 @@ class DirectFirst(unittest.TestCase):
     """The hub proxy drops connections to the gallery host: the first try is direct, never through the proxy."""
     def test_direct_first_then_curl(self):
         calls = []
-        orig_open, orig_curl, orig_build = server.urllib.request.OpenerDirector.open, server.fetch_with_curl, server.urllib.request.build_opener
+        orig_open, orig_curl = server.urllib.request.OpenerDirector.open, server.fetch_with_curl
+        orig_build = server.net.build
 
-        def build(*handlers):
-            calls.append([type(h).__name__ for h in handlers])
-            return orig_build(*handlers)
+        def build():
+            o = orig_build()
+            calls.append([type(h).__name__ for h in o.handlers])
+            return o
 
         def boom(self, *a, **k):
             raise OSError("certificate has expired")
-        server.urllib.request.build_opener = build
+        server.net.build = build
         server.urllib.request.OpenerDirector.open = boom
         server.fetch_with_curl = lambda url, limit: calls.append("curl") or (b"ok", "")
         try:
@@ -287,10 +289,11 @@ class DirectFirst(unittest.TestCase):
             with contextlib.redirect_stderr(io.StringIO()) as err:
                 self.assertEqual(server.fetch_url("https://example.invalid/gallery.json", 100), (b"ok", ""))
         finally:
-            server.urllib.request.build_opener = orig_build
+            server.net.build = orig_build
             server.urllib.request.OpenerDirector.open = orig_open
             server.fetch_with_curl = orig_curl
-        self.assertEqual(calls, [["ProxyHandler"], "curl"])
+        self.assertEqual(sorted(calls[0]), sorted(["HTTPHandler", "HTTPSHandler", "_Redirects", "HTTPDefaultErrorHandler", "HTTPErrorProcessor"]))
+        self.assertEqual(calls[1:], ["curl"])
         self.assertIn("certificate has expired", err.getvalue())
         self.assertIn("trying curl", err.getvalue())
 

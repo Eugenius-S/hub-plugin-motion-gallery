@@ -28,6 +28,14 @@ VIDEO_EXT = (".mp4", ".webm", ".mov", ".m4v")
 POSTER_EXT = (".jpg", ".jpeg", ".png", ".webp")
 
 
+def _http(url):
+    try:
+        net.safe_url(url)
+        return True
+    except net.NetError:
+        return False
+
+
 def library(root):
     return os.path.join(root, "library")
 
@@ -104,7 +112,7 @@ class Fetcher:
             for page_url in items[:SAMPLE]:
                 try:
                     entry = site.read(page_url, self.get(page_url))
-                    size = self.head(entry["video_url"]) if entry else 0
+                    size = self.head(net.safe_url(entry["video_url"])) if entry else 0
                 except net.NetError:
                     size = 0
                 if size:
@@ -198,6 +206,7 @@ class Fetcher:
         entry = site.read(page_url, self.get(page_url))
         if not entry:
             return 0
+        net.safe_url(entry["video_url"])   # a page may name anything as its video: only http(s) is taken
         lib = library(self.root)
         slug = entry["slug"]
         rel = f"videos/{slug}{ext_of(entry['video_url'], VIDEO_EXT, '.mp4')}"
@@ -205,7 +214,9 @@ class Fetcher:
         if compress:
             size = self._squeeze(os.path.join(lib, *rel.split("/")), size)
         poster = ""
-        if entry["poster_url"]:
+        if entry["poster_url"] and not _http(entry["poster_url"]):
+            net.log(f"poster {net.host(entry['poster_url'])}: not an http address")
+        elif entry["poster_url"]:
             prel = f"posters/{slug}{ext_of(entry['poster_url'], POSTER_EXT, '.jpg')}"
             try:
                 size += self.save(entry["poster_url"], os.path.join(lib, *prel.split("/")), POSTER_MAX)
