@@ -73,14 +73,16 @@ test("problem, summary, percent, isRunning", () => {
 });
 
 test("lacking: who the hub does not have yet, and who was asked a moment ago", () => {
-  const sessions = [{ name: "hub", kind: "hub" }, { name: "moviemaker", kind: "agent" }];
-  assert.deepEqual(NEEDED, ["screenwriter", "moviemaker"]);
-  assert.deepEqual(lacking(sessions, {}, 1000), [{ name: "screenwriter", state: "ask" }]);
-  assert.deepEqual(lacking(sessions, { screenwriter: 1000 }, 1000 + ASK_TTL - 1), [{ name: "screenwriter", state: "wait" }]);
-  assert.deepEqual(lacking(sessions, { screenwriter: 1000 }, 1000 + ASK_TTL), [{ name: "screenwriter", state: "ask" }]);
-  assert.deepEqual(lacking([{ name: "screenwriter" }, { name: "moviemaker" }], {}, 0), []);
-  assert.deepEqual(lacking([{ name: "moviemaker", kind: "hub" }], {}, 0).map((x) => x.name), ["screenwriter", "moviemaker"]);   // the hub's own session is not an agent
-  assert.equal(installText("moviemaker"), "specialists install moviemaker");
+  const sessions = [{ name: "hub", kind: "hub" }, { name: "designer", kind: "agent" }];
+  const need = ["writer", "designer"];
+  assert.deepEqual(NEEDED, []);   // the plugin names no agents of its own: they are a setting
+  assert.deepEqual(lacking(sessions, {}, 1000), []);
+  assert.deepEqual(lacking(sessions, {}, 1000, need), [{ name: "writer", state: "ask" }]);
+  assert.deepEqual(lacking(sessions, { writer: 1000 }, 1000 + ASK_TTL - 1, need), [{ name: "writer", state: "wait" }]);
+  assert.deepEqual(lacking(sessions, { writer: 1000 }, 1000 + ASK_TTL, need), [{ name: "writer", state: "ask" }]);
+  assert.deepEqual(lacking([{ name: "writer" }, { name: "designer" }], {}, 0, need), []);
+  assert.deepEqual(lacking([{ name: "designer", kind: "hub" }], {}, 0, need).map((x) => x.name), ["writer", "designer"]);   // the hub's own session is not an agent
+  assert.equal(installText("designer"), "specialists install designer");
   assert.equal(hubName(sessions), "hub");
   assert.equal(hubName([]), "hub");
 });
@@ -98,7 +100,7 @@ function fakeEl(tag, cls = "", text = "") {
 const walk = (n, f) => { f(n); (n.children || []).forEach((c) => c && c.children && walk(c, f)); };
 const find = (n, pred) => { const out = []; walk(n, (x) => pred(x) && out.push(x)); return out; };
 
-const QUESTION = { items: 70, mb: 65, minutes: 3, sources: 8, ready: 3, links: ["https://skillry.dev/ai-videos", "https://github.com/a/b"], agents: ["screenwriter", "moviemaker"] };
+const QUESTION = { items: 70, mb: 65, minutes: 3, sources: 8, ready: 3, links: ["https://skillry.dev/ai-videos", "https://github.com/a/b"], agents: ["writer", "designer"] };
 
 function setup({ answer = { ok: true, data: { first: "no" } }, status = { ok: true, data: { firstrun: QUESTION } }, rows = [] } = {}) {
   const calls = [];
@@ -109,11 +111,13 @@ function setup({ answer = { ok: true, data: { first: "no" } }, status = { ok: tr
   };
   const timers = [];
   const installs = [];
+  const asked = [];
+  const settings = [];
   const fr = createFirstRun({
-    hub: { el: fakeEl }, base: () => "http://x", agents: () => rows, install: async (n) => { installs.push(n); },
+    hub: { el: fakeEl }, base: () => "http://x", agents: (names) => { asked.push(names); return rows; }, onSettings: (v) => settings.push(v), install: async (n) => { installs.push(n); },
     setTimer: (fn, ms) => { timers.push([fn, ms]); return timers.length; }, clear: () => {},
   });
-  return { fr, calls, timers, installs };
+  return { fr, calls, timers, installs, asked, settings };
 }
 
 test("the question card shows the numbers and the three answers", async () => {
@@ -183,19 +187,37 @@ test("a plugin process that starts after the page is asked again, then the card 
 
 test("agent rows: Install for the missing, 'waiting' for the asked, 'in the hub' for the present", async () => {
   setLangSource(() => "en");
-  const { fr, installs } = setup({ rows: [{ name: "screenwriter", state: "ask" }] });
+  const { fr, installs } = setup({ rows: [{ name: "writer", state: "ask" }] });
   await fr.refresh();
   const rows = find(fr.node, (x) => x.dataset.agent);
-  assert.deepEqual(rows.map((r) => r.dataset.agent), ["screenwriter", "moviemaker"]);
+  assert.deepEqual(rows.map((r) => r.dataset.agent), ["writer", "designer"]);
   const btn = find(rows[0], (x) => x.tag === "button")[0];
   assert.equal(btn.text, "Install");
   assert.equal(btn.disabled, false);
   assert.match(find(rows[1], (x) => x.text).map((x) => x.text).join(" "), /in the hub/);
   await btn.handlers.click();
-  assert.deepEqual(installs, ["screenwriter"]);
-  const waiting = setup({ rows: [{ name: "screenwriter", state: "wait" }] });
+  assert.deepEqual(installs, ["writer"]);
+  const waiting = setup({ rows: [{ name: "writer", state: "wait" }] });
   await waiting.fr.refresh();
   const b2 = find(waiting.fr.node, (x) => x.tag === "button" && x.dataset.choice === undefined)[0];
   assert.equal(b2.disabled, true);
-  assert.equal(agentTitle("moviemaker").split(" ")[0], "moviemaker");
+  assert.equal(agentTitle("designer"), "designer");   // no descriptions of our own agents: the name as the owner wrote it
+});
+
+test("the card asks for the rows of the agents the plugin named, and hands the settings to the page", async () => {
+  setLangSource(() => "en");
+  const { fr, asked, settings } = setup({ status: { ok: true, data: { firstrun: QUESTION, settings: { agents: ["writer", "designer"], composer_button: false } } } });
+  await fr.refresh();
+  assert.deepEqual(asked.at(-1), ["writer", "designer"]);
+  assert.deepEqual(settings, [{ agents: ["writer", "designer"], composer_button: false }]);
+  const text = find(fr.node, (x) => x.text).map((x) => x.text).join("\n");
+  assert.match(text, /Configured: 8 sources/);
+  assert.doesNotMatch(text, /Preinstalled/);
+});
+
+test("no agents named: no agent block at all", async () => {
+  setLangSource(() => "en");
+  const { fr } = setup({ status: { ok: true, data: { firstrun: { ...QUESTION, agents: [] } } } });
+  await fr.refresh();
+  assert.equal(find(fr.node, (x) => x.dataset.agent).length, 0);
 });

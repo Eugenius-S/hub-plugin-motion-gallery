@@ -223,6 +223,26 @@ class Page(Sandbox):
         self.assertEqual(self.sent(), [])
 
 
+@unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
+class ButtonOff(Sandbox):
+    """composer_button: false - the view works, the chat input has no gallery button."""
+
+    def ext_config(self):
+        return {"gallery_dir": STUB, "composer_button": False}
+
+    def test_no_button_in_the_chat_input_when_the_setting_is_off(self):
+        r = self.run_steps([
+            (None, {"go": self.url + "#/s/b", "init": COLLECT}),
+            (None, {"until": "!!document.querySelector('form.composer textarea')", "ms": 10000}),
+            (None, {"sleep": 2500}),
+            ("button", {"eval": "document.querySelectorAll('form.composer .mg-open').length"}),
+            (None, {"eval": "location.hash = '#/x/motion-gallery'; 1"}),
+            ("cards", {"until": "document.querySelectorAll('.mg-card').length >= 8", "ms": 10000}),
+        ])
+        self.assertEqual(r["button"]["eval"], 0, "the owner switched the button off")
+        self.assertTrue(r["cards"]["until"], "the view itself still works")
+
+
 # panel above the input? gap = input top - panel bottom (px, >= 0 means above); covered = the element at the input centre is not the input
 GEOMETRY = """(() => {
   const p = document.querySelector('.mg-panel'), f = document.querySelector('form.composer'), t = f.querySelector('textarea');

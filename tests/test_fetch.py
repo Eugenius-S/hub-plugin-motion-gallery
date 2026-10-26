@@ -103,8 +103,8 @@ class Readers(unittest.TestCase):
         for url in ("https://www.remotion.dev/prompts", "https://github.com/heygen-com/hyperframes"):
             self.assertIsNone(sources.for_url(url))
 
-    def test_the_defaults_say_how_many_are_read(self):
-        self.assertEqual(sum(1 for u in linkctl.DEFAULTS if sources.for_url(u)), 3)
+    def test_the_plugin_brings_no_links_of_its_own(self):
+        self.assertFalse(hasattr(linkctl, "DEFAULTS"))
 
     def test_skillry_item_page_to_an_entry(self):
         site = sources.for_url(LIST)
@@ -273,7 +273,7 @@ class Question(TmpCase):
         self.fk = Fakes(web or pages(2), size=500, ffmpeg=ffmpeg)
         self.sent = []
         c = linkctl.Ctl(linkmem.Links(os.path.join(self.root, "links.json")), self.fk.fetcher(self.root),
-                        notify=lambda kind, data: self.sent.append((kind, data)), defaults=[LIST, "https://github.com/a/b"], configured=lambda: configured)
+                        notify=lambda kind, data: self.sent.append((kind, data)), defaults=[LIST, "https://github.com/a/b"], agents=["writer", "designer"], configured=lambda: configured)
         c.watch = False
         return c
 
@@ -281,13 +281,13 @@ class Question(TmpCase):
         c = self.ctl()
         self.assertEqual(c.startup(), "seeded")
         self.assertEqual(c.links.first, "pending")
-        self.assertEqual(c.question()["items"], 70)
+        self.assertEqual(c.question()["items"], 23)   # one source of two is read: about 23 examples
         self.assertEqual(self.fk.gets, [])   # not a single page was read
         self.assertEqual(self.fk.saved, [])
         self.assertFalse(c.fetch.running())
         self.assertEqual(c.status()["firstrun"]["sources"], 2)
         self.assertEqual(c.status()["firstrun"]["ready"], 1)
-        self.assertEqual(c.status()["firstrun"]["agents"], ["screenwriter", "moviemaker"])
+        self.assertEqual(c.status()["firstrun"]["agents"], ["writer", "designer"])
 
     def test_the_question_is_not_asked_twice_nor_after_a_restart(self):
         c = self.ctl()
@@ -389,11 +389,11 @@ class Telegram(TmpCase):
         os.makedirs(self.state)
         open(os.path.join(self.state, "journal.jsonl"), "w").close()
         self.fk = Fakes(pages(1), size=100)
-        self.ctl = linkctl.Ctl(linkmem.Links(os.path.join(self.root, "links.json")), self.fk.fetcher(self.root), defaults=[LIST])
+        self.ctl = linkctl.Ctl(linkmem.Links(os.path.join(self.root, "links.json")), self.fk.fetcher(self.root), defaults=[LIST], agents=["writer", "designer"])
         self.ctl.watch = False
         self.ctl.startup()
         self.facts = []
-        self.poster = tgpost.Poster(self.state, lambda: self.ctl, state=lambda: {"sessions": {"hub": {"kind": "hub"}, "moviemaker": {}}},
+        self.poster = tgpost.Poster(self.state, lambda: self.ctl, state=lambda: {"sessions": {"hub": {"kind": "hub"}, "designer": {}}},
                                     emit=lambda kind, data: self.facts.append((kind, data)))
 
     def press(self, seq, button, src="telegram", ext="motion-gallery", ref=firstrun.REF):
@@ -419,7 +419,7 @@ class Telegram(TmpCase):
         kind, data = self.facts[0]
         self.assertEqual((kind, data["ref"], data["bump"]), ("telegram.post", firstrun.REF, True))
         self.assertEqual(len(data["buttons"]), 3)
-        self.assertIn("screenwriter", data["text"])   # the agents the hub lacks are named
+        self.assertIn("writer", data["text"])   # the agents the hub lacks are named
 
     def test_no_post_where_the_bot_has_no_rules(self):
         original = tgpost.rules
@@ -432,8 +432,8 @@ class Telegram(TmpCase):
         self.assertFalse(self.ctl.links.ask_posted)
 
     def test_the_agents_the_hub_lacks(self):
-        self.assertEqual(firstrun.missing({"hub": {"kind": "hub"}, "moviemaker": {}, "screenwriter": {"kind": "hub"}}), ["screenwriter"])
-        self.assertEqual(firstrun.missing(None), ["screenwriter", "moviemaker"])
+        self.assertEqual(firstrun.missing({"hub": {"kind": "hub"}, "designer": {}, "writer": {"kind": "hub"}}, ["writer", "designer"]), ["writer"])
+        self.assertEqual(firstrun.missing(None, ["writer", "designer"]), ["writer", "designer"])
 
 
 class Http(TmpCase):
@@ -478,7 +478,7 @@ class Http(TmpCase):
         self.ctl.startup()
         st, body = self.call("GET", "/fetch")
         self.assertEqual(st, 200)
-        self.assertEqual(json.loads(body)["firstrun"]["items"], 70)
+        self.assertEqual(json.loads(body)["firstrun"]["items"], 23)
         st, body = self.call("POST", "/fetch", {"action": "firstrun", "choice": "no"})
         self.assertEqual((st, json.loads(body)["first"]), (200, "no"))
         self.assertIsNone(json.loads(self.call("GET", "/fetch")[1])["firstrun"])

@@ -1,6 +1,6 @@
 // Hub Motion Gallery: the question of the first start - a card over the page. Nothing is downloaded until the owner answers (the plugin process holds
 // it back; linkctl.py): Download / Don't download / I'll change it in the settings. The same question waits in Telegram; the first answer from either
-// place settles it. The card also names the agents the gallery works with (screenwriter, moviemaker) and gives "Install" for the ones the hub lacks.
+// place settles it. The card also names the agents the owner set for the gallery (settings: agents; none by default) and gives "Install" for the ones the hub lacks.
 import { currentLang, makeT } from "./i18n.js";
 
 export const POLL_MS = 8000;      // a question answered in Telegram goes away from the page within this time
@@ -11,7 +11,7 @@ export const REPAINT_MS = 2000;   // the agent rows follow the hub snapshot (an 
 export const STR = {
   en: {
     title: "Motion Gallery: download the reference videos?",
-    body: "Preinstalled: {sources} sources of motion references - sites and repositories with prompts and videos ({ready} of them are read by the downloader now).",
+    body: "Configured: {sources} sources of motion references - sites and repositories with prompts and videos ({ready} of them are read by the downloader now).",
     cost: "Download: about {items} examples, {mb} MB of disk and {minutes} minutes in the background. Nothing is downloaded until you answer.",
     sources: "Sources",
     yes: "Download",
@@ -19,8 +19,6 @@ export const STR = {
     settings: "I'll change it in the settings",
     hint: "Settings → Motion Gallery: sources. The question can be shown again there.",
     agents: "Motion Gallery works with these agents:",
-    a_screenwriter: "screenwriter - ideas and scripts from the examples",
-    a_moviemaker: "moviemaker - assembles the video in After Effects",
     install: "Install",
     asked: "Request sent to the hub, waiting",
     here: "in the hub",
@@ -28,7 +26,7 @@ export const STR = {
   },
   ru: {
     title: "Motion Gallery: скачать референсы?",
-    body: "Предустановлено: {sources} источников референсов движения - сайты и репозитории с промтами и видео (скачивалка пока читает {ready} из них).",
+    body: "Настроено: {sources} источников референсов движения - сайты и репозитории с промтами и видео (скачивалка пока читает {ready} из них).",
     cost: "Скачка: около {items} примеров, {mb} МБ на диске и {minutes} минут в фоне. Пока вы не ответите, ничего не скачивается.",
     sources: "Источники",
     yes: "Качаем",
@@ -36,8 +34,6 @@ export const STR = {
     settings: "Поменяю в настройках",
     hint: "Настройки → Motion Gallery: источники. Там же вопрос можно показать снова.",
     agents: "Motion Gallery работает с агентами:",
-    a_screenwriter: "screenwriter - идеи и сценарии по примерам",
-    a_moviemaker: "moviemaker - собирает ролик в After Effects",
     install: "Поставить",
     asked: "Запрос отправлен хабу, ждём",
     here: "уже в хабе",
@@ -54,11 +50,12 @@ export function sourceName(url) {
   } catch { return String(url || ""); }
 }
 
-export const agentTitle = (name) => (`a_${name}` in STR.en ? t(`a_${name}`) : name);
+export const agentTitle = (name) => name;   // the plugin names no agents of its own: the owner's word as it is
 
 // hub: the Plugin API; base() - the address of the plugin process; local() - only the hub opened on this computer reaches it (the other pages: Telegram only);
-// agents() - lacking() of lib.js: [{name, state: "ask"|"wait"}], the ones the hub does not have yet; install(name) - a message to the hub
-export function createFirstRun({ hub, base, local = () => true, agents = () => [], install = async () => {}, setTimer = setTimeout, clear = clearTimeout }) {
+// agents(names) - lacking() of lib.js for the agents the plugin named: [{name, state: "ask"|"wait"}], the ones the hub does not have yet; install(name) - a message
+// to the hub; onSettings(settings) - the settings the plugin process reports (agents, composer_button) every time it answers
+export function createFirstRun({ hub, base, local = () => true, agents = () => [], install = async () => {}, onSettings = () => {}, setTimer = setTimeout, clear = clearTimeout }) {
   const el = hub.el;
   const S = { q: null, timer: 0, tick: 0, busy: false, err: "", sig: "", tries: 0 };
   const node = el("div", "mg-q");
@@ -79,7 +76,7 @@ export function createFirstRun({ hub, base, local = () => true, agents = () => [
     const q = S.q;
     node.hidden = !q;
     if (!q) { node.replaceChildren(); S.sig = ""; return; }
-    const rows = agents();
+    const rows = agents(q.agents || []);
     const sig = JSON.stringify([currentLang(), q, rows.map((r) => r.name + r.state), S.busy, S.err]);
     if (sig === S.sig) return;
     S.sig = sig;
@@ -154,6 +151,7 @@ export function createFirstRun({ hub, base, local = () => true, agents = () => [
       const r = await call("GET");
       S.q = r.ok && r.data && r.data.firstrun ? r.data.firstrun : null;
       down = !r.ok;
+      if (r.ok && r.data && r.data.settings) onSettings(r.data.settings);
     } catch { S.q = null; down = true; }
     paint();
     if (S.q) { S.tries = 0; schedule(); }

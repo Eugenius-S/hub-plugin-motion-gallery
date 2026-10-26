@@ -105,6 +105,12 @@ let hub = null;
 let main = null;      // the gallery of the view, lives between snapshots
 let over = null;      // the open overlay {node, g, off}
 let attach = null;    // the plate over the chat input: what goes with the message, and the owner's switch (attach.js)
+let cfg = { composer_button: true };   // the settings the plugin process reports (GET /fetch): the button in the chat input
+const slotRoots = new Set();   // the nodes of that button, so a late answer of the process can take them out of inputs already drawn
+function onSettings(v) {
+  cfg = { ...cfg, ...v };
+  if (cfg.composer_button === false) for (const r of slotRoots) r.replaceChildren();
+}
 
 const local = () => ["localhost", "127.0.0.1"].includes(location.hostname);
 const base = () => (local() ? `${location.protocol}//${location.hostname}:${processPort(location.port)}` : "");
@@ -117,7 +123,7 @@ function remember(hash) {
 }
 
 const askedAt = () => { try { return JSON.parse(localStorage.getItem(ASKED) || "{}") || {}; } catch { return {}; } };
-const lackNow = () => lacking(hub.snapshot()?.sessions || [], askedAt());
+const lackNow = (names = []) => lacking(hub.snapshot()?.sessions || [], askedAt(), Date.now(), names);
 // "Install": a message to the hub from the owner - only the hub or the owner installs agents; the row waits until the session appears in the snapshot
 async function install(name) {
   const asked = askedAt();
@@ -300,8 +306,8 @@ export default function register(h) {
   interceptSend(document, () => attach.allowed());   // the prompts go only when the owner switched it on
   hub.addStyle("navicon.css");   // the icon turns filled with radial waves on hover (the menu and the input button)
   keepRings();   // the page rebuilds the menu on every snapshot: the hover and the rings of its icon go on (navicon.js)
-  // the question of the first start (what is preinstalled, how long and how much the download takes): a card over the page until it is answered; in Telegram too
-  const first = createFirstRun({ hub, base, local, agents: lackNow, install });
+  // the question of the first start (what is configured, how long and how much the download takes): a card over the page until it is answered; in Telegram too
+  const first = createFirstRun({ hub, base, local, agents: lackNow, install, onSettings });
   document.body.append(first.node);
   first.refresh();
   const fetchUi = createFetchUi({ hub, base, local, onAdded: () => { main?.load(); over?.g.load(); }, onAgain: () => first.refresh() });
@@ -319,7 +325,8 @@ export default function register(h) {
     hub.addSlot("composer.tools", {
       id: "gallery",
       render(root, snap, ctx) {
-        if (!ctx.session) return root.replaceChildren();   // not a session chat (a plugin's own input, forms)
+        slotRoots.add(root);
+        if (!ctx.session || cfg.composer_button === false) return root.replaceChildren();   // not a session chat (a plugin's own input, forms), or the owner switched the button off
         let b = root.firstChild;
         if (!b) {
           b = hub.el("button", "btn round quiet mg-open");

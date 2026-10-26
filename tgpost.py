@@ -102,8 +102,8 @@ class Poster:
         if not facts or not rules():
             return
         lang = _lang()
-        lack = firstrun.missing((self.state() or {}).get("sessions"))
-        self.emit("telegram.post", {"text": firstrun.text(lang, facts["sources"], facts["ready"], lack), "ref": firstrun.REF, "settle": firstrun.tr(lang, "settle"),
+        lack = firstrun.missing((self.state() or {}).get("sessions"), facts["agents"])
+        self.emit("telegram.post", {"text": firstrun.text(lang, facts["sources"], facts["ready"], lack, facts["agents"]), "ref": firstrun.REF, "settle": firstrun.tr(lang, "settle"),
                                     "buttons": [firstrun.tr(lang, c) for c in firstrun.CHOICES], "bump": True})
         ctl.mark_posted()
 

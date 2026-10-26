@@ -80,7 +80,7 @@ class Links:
     def seed(self, defaults):
         """The links by default, once. -> the links that were put."""
         with _lock:
-            if self.data["seeded"]:
+            if self.data["seeded"] or not defaults:   # nothing to put (no sources set yet): the links by default may still come
                 return []
             put = []
             for url in defaults:

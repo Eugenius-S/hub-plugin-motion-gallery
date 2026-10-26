@@ -13,17 +13,6 @@ import firstrun
 import links as linkmem
 import sources
 
-# the sources the owner named: sites with prompts and videos, and repositories of motion work
-DEFAULTS = [
-    "https://skillry.dev/ai-videos",
-    "https://prompt-motion.com",
-    "https://claude-motion.com/gallery",
-    "https://www.remotion.dev/prompts",
-    "https://github.com/heygen-com/hyperframes",
-    "https://github.com/per-simmons/launch-video-clone",
-    "https://github.com/Liamrjohnston/remotion-motion-graphics-skill",
-    "https://github.com/AbubakrChan/product-launch-motion",
-]
 NOTE_ID = "motion-gallery-fetched"
 NOTE = {
     "en": ("Motion Gallery: {n} examples downloaded", "Motion Gallery downloaded {n} examples.{extra}"),
@@ -42,13 +31,24 @@ def _lang():
 
 class Ctl:
     """links - links.Links; fetch - fetcher.Fetcher; notify(type, data) - a fact for the hub (None - none);
+    defaults - the links to put at the first start and agents - the agents the card offers to install: a list or a function giving it
+    (the settings of the owner; none by default - then nothing is put and nothing is asked);
     configured() - True when hub.json already points the plugin at a gallery (no question then)."""
 
-    def __init__(self, links, fetch, notify=None, defaults=DEFAULTS, configured=None):
-        self.links, self.fetch, self.notify, self.defaults = links, fetch, notify, defaults
+    def __init__(self, links, fetch, notify=None, defaults=(), agents=(), configured=None):
+        self.links, self.fetch, self._defaults, self._agents = links, fetch, defaults, agents
+        self.notify = notify
         self.configured = configured or (lambda: False)
         self.watch = True   # a download nobody sits on is watched: the owner is told when it is over; tests switch it off
         self.lock = threading.Lock()
+
+    @property
+    def defaults(self):
+        return list(self._defaults() if callable(self._defaults) else self._defaults)
+
+    @property
+    def agents(self):
+        return list(self._agents() if callable(self._agents) else self._agents)
 
     # --- the start ---
 
@@ -65,7 +65,8 @@ class Ctl:
     def facts(self):
         """What the question says: the sources, how many of them the downloader reads, the size and the time."""
         urls = [linkmem.canon(u) for u in self.defaults]
-        return {**firstrun.FACTS, "sources": len(urls), "ready": sum(1 for u in urls if sources.for_url(u)), "links": urls, "agents": list(firstrun.AGENTS)}
+        ready = sum(1 for u in urls if sources.for_url(u))
+        return {**firstrun.facts(len(urls), ready), "sources": len(urls), "ready": ready, "links": urls, "agents": self.agents}
 
     def question(self):
         """The question while it waits for the answer, otherwise None."""

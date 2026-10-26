@@ -65,15 +65,52 @@ def config():
         return {}
 
 
-def setting(key, env):
-    """A setting of the plugin: the environment (tests) first, then hub.json extensions.<account>:motion-gallery.<key>; "" - not set."""
+def raw_setting(key, env):
+    """A setting as it stands: the environment (tests) first, then hub.json extensions.<account>:motion-gallery.<key> (any JSON value); None - not set."""
     val = (os.environ.get(env) or "").strip()
     if val:
         return val
     for k, v in (config().get("extensions") or {}).items():
-        if isinstance(v, dict) and str(k).rsplit(":", 1)[-1] == NAME and str(v.get(key) or "").strip():
-            return str(v[key]).strip()
-    return ""
+        if isinstance(v, dict) and str(k).rsplit(":", 1)[-1] == NAME and key in v and v[key] is not None and v[key] != "":
+            return v[key]
+    return None
+
+
+def setting(key, env):
+    """A text setting of the plugin; "" - not set."""
+    val = raw_setting(key, env)
+    return str(val).strip() if isinstance(val, (str, int, float)) and not isinstance(val, bool) else ""
+
+
+def flag_setting(key, env, default=True):
+    """A yes/no setting: a JSON boolean or a word (false, 0, off, no - off); not set - default."""
+    val = raw_setting(key, env)
+    if val is None:
+        return default
+    return str(val).strip().lower() not in ("false", "0", "off", "no")
+
+
+def list_setting(key, env):
+    """A list setting: a JSON list, or a string split at commas, semicolons and spaces; empty entries dropped."""
+    val = raw_setting(key, env)
+    if isinstance(val, str):
+        val = re.split(r"[,;\s]+", val)
+    return [str(x).strip() for x in val if isinstance(x, str) and x.strip()] if isinstance(val, list) else []
+
+
+def sources_setting():
+    """The links the owner wants downloaded by default (only http and https); none - the plugin brings no sources of its own."""
+    return [u for u in list_setting("sources", "MOTION_GALLERY_SOURCES") if is_url(u)]
+
+
+def agents_setting():
+    """The agents (sessions of the hub) the gallery works with; the first-start card offers to install the ones the hub lacks. None by default."""
+    return list_setting("agents", "MOTION_GALLERY_AGENTS")
+
+
+def composer_button():
+    """The gallery button in the chat input (the composer.tools slot of the hub page, where the hub has it)."""
+    return flag_setting("composer_button", "MOTION_GALLERY_COMPOSER_BUTTON")
 
 
 def gallery_dir():
@@ -110,7 +147,7 @@ def inside(root, rel):
     return real
 
 
-PROMPT_MAX = 40000   # prompts go into the chat whole: the longest real one is about 15k
+PROMPT_MAX = 20000   # a prompt is kept up to this size (the chat gets at most 10 000 of it, lib.js PER_PROMPT)
 
 
 def text(v, limit=4000):
@@ -316,7 +353,7 @@ def make_dav():
 
 
 def deleting_allowed():
-    return setting("allow_delete", "MOTION_GALLERY_DELETE").lower() not in ("false", "0", "off", "no")
+    return flag_setting("allow_delete", "MOTION_GALLERY_DELETE")
 
 
 def can_delete():
@@ -567,7 +604,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/fetch":   # the settings tab: links, question of the first start, progress of the download
             if not extra:
                 return self.say(403, {"error": "origin"})
-            return self.say(200, CTL.status(), extra) if CTL else self.say(503, {"error": "starting"}, extra)
+            return self.say(200, {**CTL.status(), "settings": {"agents": agents_setting(), "composer_button": composer_button()}}, extra) if CTL else self.say(503, {"error": "starting"}, extra)
         if url.path.startswith("/f/"):
             return self.file(unquote(url.path[3:]), extra)
         if url.path.startswith("/lib/"):
@@ -692,6 +729,7 @@ def notify(kind, data):
 def make_ctl():
     root = plugin_dir()
     return linkctl.Ctl(linkmem.Links(os.path.join(root, linkmem.NAME)), fetcher.Fetcher(root), notify=notify,
+                       defaults=sources_setting, agents=agents_setting,
                        configured=lambda: bool(setting("gallery_dir", "MOTION_GALLERY_DIR") or media_base()))
 
 
