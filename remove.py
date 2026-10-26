@@ -16,7 +16,7 @@ KINDS = (("video", "videos", (".mp4", ".webm", ".mov")),
 def clean(value):
     """A path inside the gallery, or "": links, empty values and anything that climbs out of the folder are not files."""
     v = str(value or "").strip().replace("\\", "/").lstrip("/")
-    if not v or re.match(r"^[a-z][a-z0-9+.-]*:", v, re.I) or any(p in ("..", "") for p in v.split("/")):
+    if not v or re.match(r"^[a-z][a-z0-9+.-]*:", v, re.I) or any(p in ("..", ".", "") for p in v.split("/")):
         return ""
     return v
 
@@ -29,6 +29,7 @@ def paths_of(row, slug):
         if isinstance(raw, str) and re.match(r"^https?://", raw.strip(), re.I):
             continue   # lives elsewhere: not ours to delete
         one = clean(raw)
+        one = one if one.lower().endswith(exts) else ""   # a folder or some other file is never ours
         out += [one] if one else [f"{folder}/{slug}{e}" for e in exts]
     return list(dict.fromkeys(out))
 

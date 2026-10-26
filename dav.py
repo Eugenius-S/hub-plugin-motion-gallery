@@ -1,7 +1,7 @@
 """Hub Motion Gallery: WebDAV client for deleting examples from a gallery that lives on a Nextcloud-style storage.
 
 Reading goes by the public link (media_base); that link is read-only, so removing files needs the owner's own login:
-a JSON file {"server", "user", "password", "root"} (the setting dav_login, or the first of DEFAULT_LOGINS that exists).
+a JSON file {"server", "user", "password", "root"} named by the setting dav_login (no login file is guessed).
 Only curl is used (it has its own certificate store and speaks to the hub proxy); the password goes to curl through stdin
 (-K -), never into its arguments, the log or an answer. Nothing here prints the password or the login file path's content.
 """
@@ -10,14 +10,13 @@ import os
 import shutil
 import subprocess
 import tempfile
+import xml.etree.ElementTree as ET
 from urllib.parse import quote
 
-DEFAULT_LOGINS = [
-    os.path.join(os.environ.get("APPDATA") or "", "hub-core", "icons8-cloud.json"),
-    os.path.expanduser("~/.config/hub-core/icons8-cloud.json"),
-]
-DEFAULT_FOLDER = "Motion Gallery"
+DEFAULT_FOLDER = "motion-gallery"
+MEDIA = (".mp4", ".webm", ".mov", ".jpg", ".jpeg", ".png", ".webp")   # the only files the plugin ever puts there
 TIMEOUT = 60
+PROPFIND = b'<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>'
 
 
 class DavError(Exception):
@@ -29,17 +28,16 @@ class DavError(Exception):
 
 
 def read_login(path=""):
-    """The login dict {server, user, password, root} or None: no file / not readable / incomplete."""
-    for p in ([path] if path else DEFAULT_LOGINS):
-        if not p:
-            continue
-        try:
-            with open(os.path.expanduser(p), encoding="utf-8") as f:
-                d = json.load(f)
-        except (OSError, ValueError):
-            continue
-        if isinstance(d, dict) and all(isinstance(d.get(k), str) and d[k] for k in ("server", "user", "password")):
-            return {"server": d["server"].rstrip("/"), "user": d["user"], "password": d["password"], "root": str(d.get("root") or "").strip("/")}
+    """The login dict {server, user, password, root} or None: no path / no file / not readable / incomplete."""
+    if not path:
+        return None
+    try:
+        with open(os.path.expandvars(os.path.expanduser(path)), encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if isinstance(d, dict) and all(isinstance(d.get(k), str) and d[k] for k in ("server", "user", "password")):
+        return {"server": d["server"].rstrip("/"), "user": d["user"], "password": d["password"], "root": str(d.get("root") or "").strip("/")}
     return None
 
 
@@ -114,8 +112,32 @@ class Dav:
         if st not in (200, 201, 204):
             raise DavError(st, "write failed")
 
+    def is_file(self, rel):
+        """True: a file; False: nothing there. A folder or an answer that does not say raises (the caller must not delete)."""
+        st, _, body = self.call("PROPFIND", rel, PROPFIND, {"Depth": "0", "Content-Type": "application/xml"})
+        if st == 404:
+            return False
+        if st != 207:
+            raise DavError(st, "could not check the target")
+        try:
+            kind = ET.fromstring(body).find(".//{DAV:}resourcetype")
+        except ET.ParseError:
+            kind = None
+        if kind is None:
+            raise DavError(st, "could not check the target")
+        if kind.find("{DAV:}collection") is not None:
+            raise DavError(400, "the target is a folder")
+        return True
+
     def delete(self, rel):
-        """A missing file is not an error (it is gone either way)."""
+        """Deletes one file of ours by its exact path. Not a folder, not the root, not a file that is not media, and nothing when
+        the target can not be told to be a plain file. A missing file is not an error (it is gone either way)."""
+        parts = rel.replace("\\", "/").split("/") if isinstance(rel, str) else []
+        if (not parts or rel.strip("/ .") == "" or rel.endswith("/") or any(p in ("", ".", "..") for p in parts)
+                or not rel.lower().endswith(MEDIA)):
+            raise DavError(400, "not a file of ours")
+        if not self.is_file(rel):
+            return
         st, _, _ = self.call("DELETE", rel)
         if st not in (200, 202, 204, 404):
             raise DavError(st, "delete failed")

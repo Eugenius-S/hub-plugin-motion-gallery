@@ -272,6 +272,10 @@ class Login(unittest.TestCase):
 
         def runner(args, auth):
             seen.append((args, auth))
+            if args[args.index("-X") + 1] == "PROPFIND":
+                Path(args[args.index("-D") + 1]).write_text("HTTP/1.1 207 Multi-Status\r\n", encoding="utf-8")
+                Path(args[args.index("-o") + 1]).write_bytes(b'<d:multistatus xmlns:d="DAV:"><d:response><d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat></d:response></d:multistatus>')
+                return 0, ""
             Path(args[args.index("-D") + 1]).write_text('HTTP/1.1 204 No Content\r\nETag: "e"\r\n', encoding="utf-8")
             Path(args[args.index("-o") + 1]).write_bytes(b"")
             return 0, ""
@@ -282,6 +286,99 @@ class Login(unittest.TestCase):
         args, auth = seen[0]
         self.assertIn("sec ret", auth)
         self.assertFalse(any("sec ret" in a for a in args))
+
+
+class Webdav:
+    """A storage behind the real Dav: files and collections by url path; every request is kept."""
+
+    def __init__(self, entries):
+        self.entries, self.requests = dict(entries), []
+
+    def runner(self, args, auth):
+        method = args[args.index("-X") + 1]
+        url = args[-1]
+        path = url.split("/remote.php/dav/files/me/", 1)[1].rstrip("/")
+        self.requests.append((method, path))
+        kind = self.entries.get(path)
+        status, body = 204, b""
+        if method == "PROPFIND":
+            if kind is None:
+                status = 404
+            else:
+                tag = "<d:collection/>" if kind == "dir" else ""
+                body = ('<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:propstat><d:prop><d:resourcetype>%s'
+                        '</d:resourcetype></d:prop></d:propstat></d:response></d:multistatus>' % tag).encode()
+                status = 207
+        elif method == "DELETE":
+            if kind is None:
+                status = 404
+            else:
+                for k in [k for k in self.entries if k == path or k.startswith(path + "/")]:
+                    del self.entries[k]
+        Path(args[args.index("-D") + 1]).write_text("HTTP/1.1 %d X\r\n" % status, encoding="utf-8")
+        Path(args[args.index("-o") + 1]).write_bytes(body)
+        return 0, ""
+
+    def dav(self, runner=None):
+        return dav.Dav({"server": "https://s.test", "user": "me", "password": "p", "root": ""}, "mg", runner or self.runner)
+
+    def deletes(self):
+        return [r for r in self.requests if r[0] == "DELETE"]
+
+
+class SafeDelete(unittest.TestCase):
+    """Only the exact file the plugin put there goes: never a folder, never the root, never an unsure target."""
+
+    def setUp(self):
+        self.w = Webdav({"mg": "dir", "mg/videos": "dir", "mg/videos/a.mp4": "file", "mg/gallery.json": "file", "mg/videos/keep.txt": "file"})
+
+    def test_a_media_file_is_checked_as_a_file_and_then_deleted(self):
+        self.w.dav().delete("videos/a.mp4")
+        self.assertEqual(self.w.requests, [("PROPFIND", "mg/videos/a.mp4"), ("DELETE", "mg/videos/a.mp4")])
+        self.assertNotIn("mg/videos", [k for k in self.w.entries if k.endswith("a.mp4")])
+        self.assertIn("mg/videos", self.w.entries)
+
+    def test_a_folder_is_refused_without_a_delete_request(self):
+        self.w.entries["mg/videos/clips.mp4"] = "dir"   # a collection with a file-like name
+        for rel in ("videos", "videos/clips.mp4", "", "/", ".", "videos/", "../x.mp4", "videos/../a.mp4", "videos//a.mp4"):
+            with self.assertRaises(dav.DavError, msg=rel):
+                self.w.dav().delete(rel)
+        self.assertEqual(self.w.deletes(), [])
+        self.assertIn("mg/videos/a.mp4", self.w.entries)
+
+    def test_only_media_files_are_ours(self):
+        for rel in ("gallery.json", "videos/keep.txt", "videos/noext"):
+            with self.assertRaises(dav.DavError, msg=rel):
+                self.w.dav().delete(rel)
+        self.assertEqual(self.w.requests, [])
+
+    def test_a_missing_file_is_not_an_error_and_not_deleted(self):
+        self.w.dav().delete("videos/gone.mp4")
+        self.assertEqual(self.w.deletes(), [])
+
+    def test_an_answer_that_does_not_say_what_it_is_means_no_delete(self):
+        orig = self.w.runner
+
+        def runner(args, auth):
+            code = orig(args, auth)
+            if args[args.index("-X") + 1] == "PROPFIND":
+                Path(args[args.index("-D") + 1]).write_text("HTTP/1.1 207 X\r\n", encoding="utf-8")
+                Path(args[args.index("-o") + 1]).write_bytes(b"<nonsense")
+            return code
+
+        with self.assertRaises(dav.DavError):
+            self.w.dav(runner).delete("videos/a.mp4")
+        self.assertEqual(self.w.deletes(), [])
+
+    def test_no_login_file_is_guessed_when_none_is_set(self):
+        self.assertIsNone(dav.read_login(""))
+
+    def test_an_entry_that_names_a_folder_does_not_take_the_folder_with_it(self):
+        _, files = remove.take_out([{"slug": "x", "video": "videos", "poster": "posters/x.jpg/", "preview": "gallery.json"}], "x", server.slug_of)
+        self.assertNotIn("videos", files)
+        self.assertNotIn("gallery.json", files)
+        for f in files:
+            self.assertTrue(f.lower().endswith((".mp4", ".webm", ".mov", ".jpg", ".jpeg", ".png", ".webp")), f)
 
 
 if __name__ == "__main__":
