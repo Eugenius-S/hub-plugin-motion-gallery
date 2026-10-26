@@ -32,10 +32,10 @@ test("two tags: both prompts go with the message, a tag deleted from the text do
   insertTag(form(ta), "(One)");
   insertTag(form(ta), "(Two)");
   assert.equal(ta.value, "(One) (Two) ");
-  assert.equal(attachRefs(ta), true);
+  assert.equal(attachRefs(ta, true), true);
   for (const must of ["(One) (Two)", "prompt one", "http://x/1.mp4", "prompt two", "http://x/2-p.mp4"]) assert.ok(ta.value.includes(must), must);
   assert.ok(!ta.value.includes("prompt gone"));
-  assert.equal(attachRefs(ta), true);                       // twice: still one block
+  assert.equal(attachRefs(ta, true), true);                 // twice: still one block
   assert.equal(ta.value.split("Refs from Motion Gallery").length, 2);
   detachRefs(ta);
   assert.equal(ta.value, "(One) (Two)");                    // not sent: the input is as the owner left it
@@ -45,7 +45,7 @@ test("two tags: both prompts go with the message, a tag deleted from the text do
 test("interceptSend: Enter and submit add the refs before the page reads the input, Shift+Enter does not, an unsent text gets them back", async () => {
   const handlers = {};
   const doc = { addEventListener: (t, f) => { handlers[t] = f; }, removeEventListener() {} };
-  const off = interceptSend(doc);
+  const off = interceptSend(doc, () => true);
   const ta = new FakeTA("(One) hi");
   tagsOf(ta, true).set("(One)", { slug: "1", prompt: "prompt one" });
   handlers.keydown({ key: "Enter", shiftKey: true, target: ta });
@@ -81,4 +81,26 @@ test("waitComposer: finds the form when it appears, gives up when the chat chang
   const t0 = Date.now();
   assert.equal(await waitComposer(() => true, 200, doc), null);     // never appeared
   assert.ok(Date.now() - t0 < 1500);
+});
+
+test("without the owner's consent nothing is added: attachRefs and interceptSend leave the message as it is", async () => {
+  const ta = new FakeTA("(One) hi");
+  tagsOf(ta, true).set("(One)", { slug: "1", prompt: "prompt one" });
+  assert.equal(attachRefs(ta), false);
+  assert.equal(attachRefs(ta, false), false);
+  assert.equal(ta.value, "(One) hi");
+  const handlers = {};
+  const doc = { addEventListener: (t, f) => { handlers[t] = f; }, removeEventListener() {} };
+  interceptSend(doc);                                       // no consent given: off
+  handlers.keydown({ key: "Enter", shiftKey: false, target: ta });
+  handlers.submit({ target: { querySelector: () => ta } });
+  assert.equal(ta.value, "(One) hi");
+  let on = false;
+  const doc2 = { addEventListener: (t, f) => { handlers[t] = f; }, removeEventListener() {} };
+  interceptSend(doc2, () => on);                            // the consent is read at the moment of sending
+  handlers.keydown({ key: "Enter", shiftKey: false, target: ta });
+  assert.equal(ta.value, "(One) hi");
+  on = true;
+  handlers.keydown({ key: "Enter", shiftKey: false, target: ta });
+  assert.ok(ta.value.includes("prompt one"));
 });

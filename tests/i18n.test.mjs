@@ -22,13 +22,13 @@ test("en and ru have the same keys, nothing empty", () => {
 test("every key used in the code exists", () => {
   const { en } = table();
   const used = new Set();
-  for (const f of ["main.js", "gallery.js"]) for (const m of src(f).matchAll(/\btr\("(\w+)"/g)) used.add(m[1]);
+  for (const f of ["main.js", "gallery.js", "attach.js"]) for (const m of src(f).matchAll(/\btr\("(\w+)"/g)) used.add(m[1]);
   for (const k of used) assert.ok(k in en, `tr("${k}") has no string`);
 });
 
 test("Cyrillic only in STR.ru (and manifest strings)", () => {
   const stripped = src("main.js").replace(/\n  ru: \{[\s\S]*?\n  \},\n\};/, "");
-  for (const f of ["gallery.js", "lib.js", "insert.js", "i18n.js"]) assert.ok(!/[А-Яа-яЁё]/.test(src(f)), f);
+  for (const f of ["gallery.js", "lib.js", "insert.js", "attach.js", "i18n.js"]) assert.ok(!/[А-Яа-яЁё]/.test(src(f)), f);
   assert.ok(!/[А-Яа-яЁё]/.test(stripped), "main.js outside STR.ru");
 });
 

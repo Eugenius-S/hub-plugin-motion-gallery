@@ -3,6 +3,7 @@
 // links to its video and preview travel with the message (insert.js). Two ways in: the view in the
 // menu (inserts into the last opened chat, or the one chosen at the top) and a button in the input of any chat (the gallery
 // opens over the page and inserts into that chat). Files are served by the plugin process (server.py).
+import { createAttach } from "./attach.js";
 import { createFetchUi, t as tf } from "./fetchui.js";
 import { createFirstRun } from "./firstrun.js";
 import { createGallery } from "./gallery.js";
@@ -43,6 +44,15 @@ const STR = {
     next: "Next example",
     no_video: "This example has no video, only a poster.",
     video_failed: "The video did not load.",
+    attach_title: "What goes with the message",
+    attach_label: "Attach the prompts of {n} examples to the message ({chars} characters, from outside sources)",
+    attach_on: "On: the prompts are added under the message as reference material, not instructions.",
+    attach_off: "Off: only the tags go with the message.",
+    attach_show: "Show",
+    attach_hide: "Hide",
+    attach_chars: "{n} characters go",
+    attach_cut: "(the rest, {n}, is cut)",
+    attach_none: "no prompt, only links",
   },
   ru: {
     subtitle: "примеры движения: наведи, и играет; клик ставит тег в чат",
@@ -75,6 +85,15 @@ const STR = {
     next: "Следующий пример",
     no_video: "У примера нет видео, только постер.",
     video_failed: "Видео не загрузилось.",
+    attach_title: "Что уходит вместе с сообщением",
+    attach_label: "Приложить к сообщению промты ({n} шт., {chars} знаков, из внешних источников)",
+    attach_on: "Включено: промты добавятся под сообщением как справочный материал, не как указания.",
+    attach_off: "Выключено: с сообщением уходят только теги.",
+    attach_show: "Показать",
+    attach_hide: "Скрыть",
+    attach_chars: "уходит {n} знаков",
+    attach_cut: "(остальное, {n}, обрезано)",
+    attach_none: "промта нет, только ссылки",
   },
 };
 const tr = makeT(STR);
@@ -85,6 +104,7 @@ const LAST = "motion-gallery:last";   // the chat opened last (localStorage): th
 let hub = null;
 let main = null;      // the gallery of the view, lives between snapshots
 let over = null;      // the open overlay {node, g, off}
+let attach = null;    // the plate over the chat input: what goes with the message, and the owner's switch (attach.js)
 
 const local = () => ["localhost", "127.0.0.1"].includes(location.hostname);
 const base = () => (local() ? `${location.protocol}//${location.hostname}:${processPort(location.port)}` : "");
@@ -134,7 +154,9 @@ async function putIn(formPromise, item) {
   const tag = tagFor(item, new Map([...tags].map(([t, r]) => [t, r.slug])));
   const url = (src) => mediaUrl(base(), src);
   tags.set(tag, { slug: item.slug, prompt: chatText(item), video: url(item.video), preview: url(item.preview), source: linksOf(item)[0]?.url || "" });
-  return insertTag(form, tag);
+  const went = insertTag(form, tag);
+  attach?.watch(form);
+  return went;
 }
 
 // Delete (the button in the lightbox): the card leaves the grid at once and a plate "Deleted · Undo" stays for a few seconds;
@@ -234,8 +256,9 @@ function openOver(form) {
     const r = form.getBoundingClientRect();
     panel.style.left = r.left + "px";
     panel.style.width = r.width + "px";
-    panel.style.bottom = Math.max(0, innerHeight - r.top + 8) + "px";
-    panel.style.maxHeight = Math.max(200, r.top - 24) + "px";
+    const lift = attach?.height() || 0;   // the plate "what goes with the message" sits between the input and the panel
+    panel.style.bottom = Math.max(0, innerHeight - r.top + 8 + lift) + "px";
+    panel.style.maxHeight = Math.max(200, r.top - 24 - lift) + "px";
   }
   const ro = new ResizeObserver(place);   // the input grows with the text and the chips
   const off = () => close();
@@ -259,7 +282,7 @@ function openOver(form) {
   scroll.append(g.node);
   panel.append(scroll, x);
   document.body.append(panel);
-  over = { node: panel, g, close };
+  over = { node: panel, g, close, place };
   place();
   ro.observe(form);
   addEventListener("resize", place);
@@ -273,7 +296,8 @@ export default function register(h) {
   hub = h;
   setLangSource(() => hub.lang);   // read on every use, never at load
   hub.addStyle("style.css");
-  interceptSend();
+  attach = createAttach({ el: hub.el, tr, onSize: () => over?.place?.() });
+  interceptSend(document, () => attach.allowed());   // the prompts go only when the owner switched it on
   hub.addStyle("navicon.css");   // the icon turns filled with radial waves on hover (the menu and the input button)
   keepRings();   // the page rebuilds the menu on every snapshot: the hover and the rings of its icon go on (navicon.js)
   // the question of the first start (what is preinstalled, how long and how much the download takes): a card over the page until it is answered; in Telegram too

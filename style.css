@@ -181,3 +181,17 @@
 .mg-f-now:empty, .mg-f-msg:empty { display: none; }
 .mg-f-msg { font-size: 13px; }
 .mg-f-msg.bad { color: var(--destructive, #d14343); }
+
+/* the plate over the chat input: what goes with the message and the owner's switch (attach.js) */
+.mg-attach { position: fixed; z-index: 905; box-sizing: border-box; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-plate, 0 6px 20px rgba(0, 0, 0, .18)); font-size: 13px; }
+.mg-attach[hidden] { display: none; }
+.mg-attach-head { display: flex; align-items: center; gap: 10px; }
+.mg-attach-row { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; cursor: pointer; }
+.mg-attach-row input { margin: 0; flex: none; }
+.mg-attach-more { flex: none; height: 26px; padding: 0 10px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 12px; cursor: pointer; }
+.mg-attach-more:hover { color: var(--foreground); border-color: var(--input); }
+.mg-attach-more:focus-visible, .mg-attach-row input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.mg-attach-hint { color: var(--muted-foreground); font-size: 12px; }
+.mg-attach-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow: auto; }
+.mg-attach-cap { color: var(--muted-foreground); font-size: 12px; }
+.mg-attach-pre { margin: 2px 0 0; padding: 6px 8px; max-height: 110px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--muted); border-radius: calc(var(--radius) / 2); font: 12px/1.4 ui-monospace, monospace; }

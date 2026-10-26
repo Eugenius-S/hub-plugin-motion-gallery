@@ -25,8 +25,9 @@ export function tagsOf(ta, create = false) {
   return m;
 }
 
-// the message is about to be read by the page: its refs go under the text. true - something was added
-export function attachRefs(ta) {
+// the message is about to be read by the page: its refs go under the text - only when the owner agreed (`allowed`). true - something was added
+export function attachRefs(ta, allowed = false) {
+  if (!allowed) return false;
   const tags = tagsOf(ta);
   if (!tags?.size) return false;
   const entries = usedRefs(stripRefs(ta.value), tags);
@@ -42,11 +43,11 @@ export function detachRefs(ta) {
 }
 
 // for any composer of the page: capture handlers before the page's own (Enter, the send button, a form submit).
-// Idempotent: attachRefs twice gives one block. Returns the function that takes the handlers off.
-export function interceptSend(doc = document) {
+// `allowed()` is asked at the moment of sending: without it nothing is added. Idempotent: attachRefs twice gives one block. Returns the function that takes the handlers off.
+export function interceptSend(doc = document, allowed = () => false) {
   const forTextarea = (t) => (t && t.tagName === "TEXTAREA" ? t : null);
   const prepare = (ta) => {
-    if (!ta || !attachRefs(ta)) return;
+    if (!ta || !attachRefs(ta, allowed())) return;
     setTimeout(() => { if (ta.value.includes("\n\n")) detachRefs(ta); }, 0);   // sent: the page has emptied it already
   };
   const onKey = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) prepare(forTextarea(e.target)); };
