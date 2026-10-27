@@ -112,7 +112,7 @@ The plugin process listens on `127.0.0.1` only (hub page port + 12), checks the 
 
 ## Install
 
-From the marketplace in the hub (Settings → Plugins, search "Motion Gallery"). The chat-input button needs the `composer.tools` slot of the hub page (button before the microphone). The plugin asks the page whether the slot exists and adds the button only then: on a hub without it nothing is registered, there is no error in Settings → Plugins, the button does not appear and the view works alone. The plugin process takes the hub page port + 12; if that port is busy it exits with a message in the log.
+From the marketplace in the hub (Settings → Plugins, search "Motion Gallery"). The chat-input button sits in the `composer.tools` slot where the hub page has it (a round button before the microphone). The shared hub has no such slot, so there the same button is a compact row "Motion examples" in the `session.composer` slot above the input; it opens the same gallery over the chat. One button, never both. The plugin asks the page which slots exist and registers only one of them: on a hub with neither nothing is registered, there is no error in Settings → Plugins and the view works alone. The plugin process takes the hub page port + 12; if that port is busy it exits with a message in the log.
 
 Files shown in the grid (posters, previews) are loaded by the browser straight from their address (the folder or `media_base`); the plugin process fetches only `gallery.json` when there is a base and no folder.
 

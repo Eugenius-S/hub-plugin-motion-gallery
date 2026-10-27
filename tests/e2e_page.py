@@ -235,37 +235,62 @@ class ButtonOff(Sandbox):
             (None, {"go": self.url + "#/s/b", "init": COLLECT}),
             (None, {"until": "!!document.querySelector('form.composer textarea')", "ms": 10000}),
             (None, {"sleep": 2500}),
-            ("button", {"eval": "document.querySelectorAll('form.composer .mg-open').length"}),
+            ("button", {"eval": "document.querySelectorAll('.mg-open').length"}),
+            ("host", {"eval": "[...document.querySelectorAll('.slot-host.composer')].filter(h => h.getClientRects().length).length"}),
             (None, {"eval": "location.hash = '#/x/motion-gallery'; 1"}),
             ("cards", {"until": "document.querySelectorAll('.mg-card').length >= 8", "ms": 10000}),
         ])
         self.assertEqual(r["button"]["eval"], 0, "the owner switched the button off")
+        self.assertEqual(r["host"]["eval"], 0, "no empty box is left above the input (session.composer)")
         self.assertTrue(r["cards"]["until"], "the view itself still works")
 
 
 @unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
 class Place(Sandbox):
-    """The button sits in the hub's own place composer.tools. A hub without that place (the shared core) gets no button and,
-    above all, no error on the Plugins tab; a hub with it gets the button."""
+    """The button sits in the hub's own place composer.tools (before the microphone); a hub without it (the shared core) gets a
+    compact row in session.composer above the input - one button, never both - and no error on the Plugins tab."""
 
     def test_the_button_follows_the_place_and_nothing_is_reported(self):
         r = self.run_steps([
             (None, {"go": self.url + "#/s/b", "init": COLLECT}),
             (None, {"until": "!!document.querySelector('form.composer textarea')", "ms": 10000}),
-            (None, {"eval": "import('/static/js/ext.js').then(m => { window.__pl = JSON.stringify({ problems: [...m.problems], place: !!m.SLOTS['composer.tools'] }); window.__place = !!m.SLOTS['composer.tools']; }); 1"}),
+            (None, {"eval": "import('/static/js/ext.js').then(m => { window.__pl = JSON.stringify({ problems: [...m.problems], tools: !!m.SLOTS['composer.tools'], above: !!m.SLOTS['session.composer'] }); window.__place = true; }); 1"}),
             ("info", {"until": "window.__pl !== undefined", "ms": 5000}),
             (None, {"sleep": 2500}),
-            # the input takes the button on the next snapshot of the page: with the place, wait for it; without, nothing to wait for
-            (None, {"until": "!window.__place || !!document.querySelector('form.composer .mg-open')", "ms": 10000}),
-            ("button", {"eval": "document.querySelectorAll('form.composer .mg-open').length"}),
+            # the input takes the button on the next snapshot of the page
+            (None, {"until": "!!document.querySelector('.mg-open')", "ms": 10000}),
+            ("inForm", {"eval": "document.querySelectorAll('form.composer .mg-open').length"}),
+            ("inRow", {"eval": "document.querySelectorAll('.slot-host.composer .mg-open').length"}),
+            ("all", {"eval": "document.querySelectorAll('.mg-open').length"}),
+            (None, self.shot("composer-button.png", width=1300, height=900)),
             ("seen", {"eval": "window.__pl"}),
             ("thrown", {"eval": "JSON.stringify(window.__mg)"}),
         ])
         info = json.loads(r["seen"]["eval"])
         self.assertEqual(info["problems"], [], "nothing on the Plugins tab")
         self.assertEqual(json.loads(r["thrown"]["eval"]), [], "nothing thrown on the page")
-        self.assertEqual(r["button"]["eval"], 1 if info["place"] else 0,
-                         "the button exists exactly when the hub has the place " + str(info["place"]))
+        self.assertEqual(r["all"]["eval"], 1, "one button, never both places")
+        self.assertEqual(r["inForm"]["eval"], 1 if info["tools"] else 0, "before the microphone exactly when the hub has composer.tools " + str(info))
+        self.assertEqual(r["inRow"]["eval"], 0 if info["tools"] else 1, "without composer.tools the button goes to session.composer " + str(info))
+
+    def test_the_row_button_opens_the_gallery_over_the_input(self):
+        r = self.run_steps([
+            (None, {"go": self.url + "#/s/b", "init": COLLECT}),
+            (None, {"until": "!!document.querySelector('form.composer textarea')", "ms": 10000}),
+            (None, {"until": "!!document.querySelector('.mg-open')", "ms": 12000}),
+            (None, {"eval": "document.querySelector('.mg-open').click(); 1"}),
+            ("opened", {"until": "document.querySelectorAll('.mg-panel .mg-card').length >= 1", "ms": 10000}),
+            (None, {"eval": "document.querySelector('.mg-panel .mg-card').click(); 1"}),
+            ("put", {"until": "document.querySelector('form.composer textarea').value.length > 2", "ms": 8000}),
+            ("pressed", {"eval": "document.querySelector('.mg-open').getAttribute('aria-pressed')"}),
+            (None, self.shot("composer-button-open.png", width=1300, height=900)),
+            (None, {"eval": "document.querySelector('.mg-open').click(); 1"}),
+            ("closed", {"until": "!document.querySelector('.mg-panel')", "ms": 5000}),
+        ])
+        self.assertTrue(r["opened"]["until"])
+        self.assertTrue(r["put"]["until"], "a click on a card puts the example into the chat input")
+        self.assertEqual(r["pressed"]["eval"], "true")
+        self.assertTrue(r["closed"]["until"])
 
 
 # panel above the input? gap = input top - panel bottom (px, >= 0 means above); covered = the element at the input centre is not the input
@@ -705,7 +730,7 @@ class Removal(Sandbox):
 
 if __name__ == "__main__":
     # Page inherits PageInChrome: only our own tests, not the whole hub e2e suite
-    own = [f"{c.__name__}.{n}" for c in (Page, Ghost, Real, Icon, Lightbox, Removal) for n in vars(c) if n.startswith("test_")]
+    own = [f"{c.__name__}.{n}" for c in (Page, Place, Ghost, Real, Icon, Lightbox, Removal) for n in vars(c) if n.startswith("test_")]
     names = [a for a in sys.argv[1:] if not a.startswith("-")]
     flags = [a for a in sys.argv[1:] if a.startswith("-")]
     unittest.main(argv=[sys.argv[0], *flags, *(names or own)])

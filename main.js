@@ -17,6 +17,7 @@ const STR = {
     subtitle: "motion examples: hover to play, click to add a tag to a chat",
     title: "Motion Gallery",
     open_in: "Motion examples: put into this chat",
+    open_row: "Motion examples",
     search: "Search prompts, authors, tags…",
     reload: "Reload the gallery",
     insert_into: "Insert into chat",
@@ -58,6 +59,7 @@ const STR = {
     subtitle: "примеры движения: наведи, и играет; клик ставит тег в чат",
     title: "Галерея движения",
     open_in: "Примеры движения: вставить в этот чат",
+    open_row: "Примеры движения",
     search: "Поиск по промтам, авторам, тегам…",
     reload: "Обновить галерею",
     insert_into: "Вставлять в чат",
@@ -320,32 +322,41 @@ export default function register(h) {
     show() { main?.load(); },   // new previews may have been added since the last visit
     hide() { main?.stop(); },
   });
-  // a button before the microphone in the input of any chat (the composer.tools slot - an addition of this hub). A hub without
-  // that place would put a "no such slot" error on the Plugins tab, so the slot is asked for only where the place exists
-  if ((PLACE || hub.capabilities?.composerTools === 1) && typeof hub.addSlot === "function") addButton();
+  // the button that opens the gallery over the chat input: before the microphone where the hub has the composer.tools slot
+  // (an addition of this hub), otherwise a compact row above the input in session.composer (the shared hub has it). Never both.
+  // A hub with neither place would put a "no such slot" error on the Plugins tab, so a slot is asked for only where it exists
+  const slot = hub.capabilities?.composerTools === 1 ? TOOLS : place();
+  if (slot && typeof hub.addSlot === "function") addButton(slot);
 }
 
 // The page names its places in SLOTS (ext.js, the module the page itself runs on). Asked once while the plugin loads - before
 // register runs - so the button is in the first draw of the input, as it was. No such place (a hub without it): no slot is
 // asked for, the view works alone and the Plugins tab shows no error. hub.capabilities.composerTools === 1 says the same
-const PLACE = await import("/static/js/ext.js").then((m) => !!m.SLOTS?.["composer.tools"], () => false);
+const TOOLS = "composer.tools", ABOVE = "session.composer";
+const SLOTS = await import("/static/js/ext.js").then((m) => m.SLOTS || {}, () => ({}));
+const place = () => (SLOTS[TOOLS] ? TOOLS : SLOTS[ABOVE] ? ABOVE : null);
 
-function addButton() {
-  hub.addSlot("composer.tools", {
+// the input form the button belongs to: the slot of the tools row sits inside it, the row above the input - next to it in the dock
+const formOf = (root) => root.closest("form") || root.closest(".dock-inner")?.querySelector("form.composer") || null;
+
+function addButton(slot) {
+  const row = slot === ABOVE;   // above the input: a compact row with a word, not a round icon among the tools
+  hub.addSlot(slot, {
     id: "gallery",
     render(root, snap, ctx) {
       slotRoots.add(root);
       if (!ctx.session || cfg.composer_button === false) return root.replaceChildren();   // not a session chat (a plugin's own input, forms), or the owner switched the button off
       let b = root.firstChild;
       if (!b) {
-        b = hub.el("button", "btn round quiet mg-open");
+        b = hub.el("button", row ? "btn quiet mg-open mg-row" : "btn round quiet mg-open");
         b.type = "button";
-        b.innerHTML = '<span class="mg-oi" aria-hidden="true"></span>';
-        b.addEventListener("click", () => { const form = root.closest("form"); if (over) over.close(); else if (form) openOver(form); });
+        b.innerHTML = '<span class="mg-oi" aria-hidden="true"></span>' + (row ? '<span class="mg-ol"></span>' : "");
+        b.addEventListener("click", () => { const form = formOf(root); if (over) over.close(); else if (form) openOver(form); });
         root.append(b);
       }
       b.title = tr("open_in");
       b.setAttribute("aria-label", tr("open_in"));
+      if (row) b.querySelector(".mg-ol").textContent = tr("open_row");
       b.classList.toggle("on", !!over);
       b.setAttribute("aria-pressed", String(!!over));
     },

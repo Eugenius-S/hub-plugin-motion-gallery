@@ -116,6 +116,13 @@
 
 /* the button before the microphone (the composer.tools slot) */
 .mg-open.on { color: var(--primary); }
+/* the row above the input (session.composer, a hub without composer.tools): the hub has no quiet look for a non-round .btn, so it is set here */
+.mg-open.mg-row { display: inline-flex; width: auto; min-height: 0; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-color: transparent; background: transparent; color: var(--muted-foreground); font-size: 13px; cursor: pointer; }
+.slot-host.composer:has(> [data-plugin$="motion-gallery"]:only-child) { border: 0; border-radius: 0; background: none; box-shadow: none; padding: 0 0 var(--space-1, 4px); cursor: default; }   /* the hub styles the host of this place like the input form; with the button switched off the host is empty and goes */
+.slot-host.composer:has(> [data-plugin$="motion-gallery"]:empty:only-child) { display: none; }
+.mg-open.mg-row:hover { color: var(--foreground); background: var(--accent); }
+.mg-open.mg-row.on { color: var(--primary); }
+.mg-open.mg-row .mg-oi { width: 16px; height: 16px; }
 .mg-open .mg-oi { display: block; width: 22px; height: 22px; background: currentColor;
   -webkit-mask: url("icon.svg") center / contain no-repeat; mask: url("icon.svg") center / contain no-repeat; }
 
