@@ -2,7 +2,7 @@
 
 A dashboard of motion examples, like Hub Design but without a canvas. You see a grid of cards, hover one and a short preview plays, click it and a tag with its name lands in a chat input, at the cursor. Nothing is sent: you write around the tag and send it yourself; the prompt and the links of every tag still in the text go with the message.
 
-The interface is in English by default and in Russian when the hub language (`hub.lang`) is Russian ("Галерея движения"); any other language falls back to English. The language is read when a text is drawn, so a switch takes effect without a reload.
+The interface is in English by default and in Russian when the hub language (`hub.lang`) is Russian (the name stays "Motion Gallery"); any other language falls back to English. The language is read when a text is drawn, so a switch takes effect without a reload.
 
 ## How it works
 
