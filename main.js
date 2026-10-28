@@ -8,7 +8,6 @@ import { createFetchUi, t as tf } from "./fetchui.js";
 import { createFirstRun } from "./firstrun.js";
 import { createGallery } from "./gallery.js";
 import { makeT, setLangSource } from "./i18n.js";
-import { keepRings } from "./navicon.js";
 import { insertTag, interceptSend, tagsOf, waitComposer } from "./insert.js";
 import { ASK_TTL, chatText, hubName, installText, lacking, linksOf, mediaUrl, processPort, sessionOf, tagFor, targets } from "./lib.js";
 
@@ -306,8 +305,7 @@ export default function register(h) {
   hub.addStyle("style.css");
   attach = createAttach({ el: hub.el, tr, onSize: () => over?.place?.() });
   interceptSend(document, () => attach.allowed());   // the prompts go only when the owner switched it on
-  hub.addStyle("navicon.css");   // the icon turns filled with radial waves on hover (the menu and the input button)
-  keepRings();   // the page rebuilds the menu on every snapshot: the hover and the rings of its icon go on (navicon.js)
+  hub.addStyle("navicon.css");   // the icon turns filled with radial waves on hover (the input button)
   // the question of the first start (what is configured, how long and how much the download takes): a card over the page until it is answered; in Telegram too
   const first = createFirstRun({ hub, base, local, agents: lackNow, install, onSettings });
   document.body.append(first.node);
