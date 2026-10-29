@@ -443,9 +443,9 @@ class Real(Sandbox):
 
 
 def probe(sel):
-    """The two layers of an icon (navicon.css) and its scale: opacity of the outline (::before) and of the filled circle (::after)."""
+    """What an icon could animate on its own: the layers (::before/::after), the scale and the running animations."""
     return ("(() => { const n = document.querySelector(%s); if (!n) return null; const b = getComputedStyle(n, '::before'), a = getComputedStyle(n, '::after'); "
-            "const m = new DOMMatrix(getComputedStyle(n).transform); return [b.opacity, a.opacity, +m.a.toFixed(2), a.maskImage.includes('icon-filled.svg') || a.webkitMaskImage.includes('icon-filled.svg'), a.backgroundImage.includes('gradient')]; })()") % json.dumps(sel)
+            "return [a.content, b.content, +new DOMMatrix(getComputedStyle(n).transform).a.toFixed(2), n.getAnimations({ subtree: true }).length]; })()") % json.dumps(sel)
 
 
 BTN = "form.composer .mg-open .mg-oi"
@@ -454,26 +454,23 @@ NAV = '#nav-extra .srow.nav .ext-icon[style*="motion-gallery/icon.svg"]'
 
 @unittest.skipUnless(READY and CHROME_READY, "needs HUB_CODE, MG_STUB, node and a headless Chrome")
 class Icon(Sandbox):
-    """The gallery button in the input: outline at rest, filled with a gradient on hover; the menu icon stays the core's."""
-    def test_icon_turns_filled_with_a_gradient_on_hover(self):
+    """The gallery button in the input has the one-color icon of the theme and hovers like the other buttons; so does the menu icon."""
+    def test_button_icon_has_no_animation_of_its_own(self):
         r = self.run_steps([
             (None, {"go": self.url + "#/s/b", "init": COLLECT}),
             (None, {"until": "!!document.querySelector('form.composer .mg-open')", "ms": 10000}),
-            (None, {"eval": "document.body.style.zoom = 3; 1"}),   # the icon is 22 px: a magnified page for the picture
             (None, {"sleep": 400}),
             ("btn_rest", {"eval": probe(BTN)}),
-            (None, self.shot("icon-button-rest.png", width=1300, height=520)),
             # the driver has no hover step: a held mouse (pressed on the button, moved over it, never released) keeps :hover
             (None, {"drag": "form.composer .mg-open", "to": "form.composer .mg-open", "keep": True}),
             (None, {"sleep": 600}),
             ("btn_hover", {"eval": probe(BTN)}),
-            (None, self.shot("icon-button-hover.png", width=1300, height=520)),
         ])
-        self.assertEqual(r["btn_rest"]["eval"][:2], ["1", "0"], "at rest the outline shows, the filled layer is hidden")
-        self.assertEqual(r["btn_rest"]["eval"][2], 1)
-        self.assertEqual(r["btn_rest"]["eval"][3:], [True, True], "the filled layer is the filled icon with a gradient")
-        self.assertEqual(r["btn_hover"]["eval"][:2], ["0", "1"], "on hover the outline goes, the filled gradient layer comes")
-        self.assertGreater(r["btn_hover"]["eval"][2], 1.05, "and the icon grows a little")
+        for k in ("btn_rest", "btn_hover"):
+            content_a, content_b, scale, anims = r[k]["eval"]
+            self.assertIn(content_a, ("none", "normal"), k + ": no ::after layer of ours")
+            self.assertIn(content_b, ("none", "normal"), k + ": no ::before layer of ours")
+            self.assertEqual((scale, anims), (1, 0), k + ": the icon does not grow and no animation runs")
 
     def test_menu_icon_hovers_like_every_other_item(self):
         """The ☰ menu icon is drawn by the core: no outline/filled layers, no scale, no rings of ours on hover (0.7.1)."""

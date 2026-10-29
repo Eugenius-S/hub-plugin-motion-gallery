@@ -305,7 +305,6 @@ export default function register(h) {
   hub.addStyle("style.css");
   attach = createAttach({ el: hub.el, tr, onSize: () => over?.place?.() });
   interceptSend(document, () => attach.allowed());   // the prompts go only when the owner switched it on
-  hub.addStyle("navicon.css");   // the icon turns filled with radial waves on hover (the input button)
   // the question of the first start (what is configured, how long and how much the download takes): a card over the page until it is answered; in Telegram too
   const first = createFirstRun({ hub, base, local, agents: lackNow, install, onSettings });
   document.body.append(first.node);

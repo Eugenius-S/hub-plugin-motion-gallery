@@ -3,7 +3,7 @@
   "icon": "icon.png",
   "description": "A grid of motion examples with hover previews: hover a card and a short preview plays, click it and a tag with the name lands in the chat input, and the prompt and links go with your message. Filters, search, full-screen view. Examples download from links you add.",
   "why": "Picking a ready example is faster than describing the motion in words",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "hub": "^1.7",
   "web": "main.js",
   "run": [
