@@ -202,3 +202,9 @@
 .mg-attach-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow: auto; }
 .mg-attach-cap { color: var(--muted-foreground); font-size: 12px; }
 .mg-attach-pre { margin: 2px 0 0; padding: 6px 8px; max-height: 110px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--muted); border-radius: calc(var(--radius) / 2); font: 12px/1.4 ui-monospace, monospace; }
+
+/* Clean (html.th-clean): the selected chip, the "added" mark, the open button and the progress bar use the ink of the theme, not the blue accent */
+html.th-clean .mg-chip.on { background: var(--c-t1); border-color: var(--c-t1); color: var(--background); }
+html.th-clean .mg-added { background: var(--c-t1); color: var(--background); }
+html.th-clean .mg-open.on, html.th-clean .mg-open.mg-row.on { color: var(--c-t1); }
+html.th-clean .mg-f-fill { background: var(--c-t1); }
