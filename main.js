@@ -314,7 +314,7 @@ export default function register(h) {
   remember(location.hash);
   addEventListener("hashchange", () => remember(location.hash));
   hub.addView({
-    id: ID, title: tr("title"), subtitle: tr("subtitle"), icon: "icon.svg", full: true,
+    id: ID, title: tr("title"), subtitle: tr("subtitle"), icon: "icon.svg", icon_themes: { clean: "icon-clean.svg" }, full: true,
     render,
     show() { main?.load(); },   // new previews may have been added since the last visit
     hide() { main?.stop(); },

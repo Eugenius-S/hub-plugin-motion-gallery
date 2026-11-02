@@ -123,7 +123,7 @@ node --test tests/*.test.mjs
 PYTHONPATH=<hub code> python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
-The icons of the plugin (close, reload, open, check mark, the view and the input button) are [Icons8 Material](https://icons8.com/icons/material-outlined): one color, outlined, like the icons of the hub theme. The input button and the ☰ menu item have no animation of their own: they hover like every other icon of the theme.
+The icons of the plugin (close, reload, open, check mark, the view and the input button) are [Icons8 Material](https://icons8.com/icons/material-outlined): one color, outlined, like the icons of the hub theme. The input button and the ☰ menu item have no animation of their own: they hover like every other icon of the theme. The glyph comes in two drawings, `icon.svg` (the standard theme, outlined) and `icon-clean.svg` (Clean); its size is set by the hub (`--tool-icon`, `--nav-icon`), not by the plugin. A hub without per-theme glyphs shows `icon.svg` everywhere.
 
 Icon — [3D Fluency](https://icons8.com/icons/3d-fluency) from Icons8.
 

@@ -123,7 +123,7 @@
 .mg-open.mg-row:hover { color: var(--foreground); background: var(--accent); }
 .mg-open.mg-row.on { color: var(--primary); }
 .mg-open.mg-row .mg-oi { width: var(--icon-size, 16px); height: var(--icon-size, 16px); }
-.mg-open .mg-oi { display: block; width: calc(var(--icon-size, 16px) * 22 / 16); height: calc(var(--icon-size, 16px) * 22 / 16); background: currentColor;
+.mg-open .mg-oi { display: block; width: var(--tool-icon, 20px); height: var(--tool-icon, 20px); background: currentColor;
   -webkit-mask: url("icon.svg") center / contain no-repeat; mask: url("icon.svg") center / contain no-repeat; }
 
 @media (prefers-reduced-motion: reduce) { .mg-card, .mg-video, .mg-zoom, .mg-lb-btn, .mg-lb-act { transition: none; } .mg-card:hover { transform: none; } }
@@ -209,5 +209,5 @@ html.th-clean .mg-added { background: var(--c-t1); color: var(--background); }
 html.th-clean .mg-open.on, html.th-clean .mg-open.mg-row.on { color: var(--c-t1); }
 html.th-clean .mg-f-fill { background: var(--c-t1); }
 
-/* Clean: the glyph is the size of the theme's own composer icons (mic, attach), not the 22 px of the standard theme */
-html.th-clean .slot-composer-tools .mg-open .mg-oi { width: 18px; height: 18px; }
+/* Clean: its own glyph file; the size is the theme's --tool-icon token (16 px there) */
+html.th-clean .slot-composer-tools .mg-open .mg-oi { -webkit-mask-image: url("icon-clean.svg"); mask-image: url("icon-clean.svg"); }
