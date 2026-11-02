@@ -208,3 +208,6 @@ html.th-clean .mg-chip.on { background: var(--c-t1); border-color: var(--c-t1); 
 html.th-clean .mg-added { background: var(--c-t1); color: var(--background); }
 html.th-clean .mg-open.on, html.th-clean .mg-open.mg-row.on { color: var(--c-t1); }
 html.th-clean .mg-f-fill { background: var(--c-t1); }
+
+/* Clean: the glyph is the size of the theme's own composer icons (mic, attach), not the 22 px of the standard theme */
+html.th-clean .slot-composer-tools .mg-open .mg-oi { width: 18px; height: 18px; }
